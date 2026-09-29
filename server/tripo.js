@@ -126,6 +126,29 @@ async function createImageTask(fileToken, opts) {
   return data.data && data.data.task_id;
 }
 
+/* 查询 Tripo API 账户余额。
+   注意：这是** API 专用额度池 **，和网页版的订阅额度不是同一个池子 ——
+   账户里明明有额度、API 却报 2010，往往就是因为余额查询在这个池子里是 0。
+   查询很快，但没必要每次都打，缓存 30 秒。 */
+let balanceCache = { at: 0, data: null };
+
+async function getBalance() {
+  if (!hasKey()) return { balance: null, frozen: null, error: "未配置 API Key" };
+  if (balanceCache.data && Date.now() - balanceCache.at < 30000) return balanceCache.data;
+  try {
+    const data = await tripo("GET", "/account/balance");
+    const out = {
+      balance: data.data ? Number(data.data.balance) : null,
+      frozen: data.data ? Number(data.data.frozen) : null
+    };
+    balanceCache = { at: Date.now(), data: out };
+    return out;
+  } catch (e) {
+    /* 查余额失败不应该连累主流程，退化成 null 即可 */
+    return { balance: null, frozen: null, error: e.message };
+  }
+}
+
 /** 上传参考图，拿到 file_token */
 async function uploadImage(buffer, filename, mime) {
   const form = new FormData();
@@ -487,7 +510,8 @@ async function handle(req, res, pathname, url) {
       hasKey: hasKey(),
       model: DEFAULT_MODEL,
       faceLimit: DEFAULT_FACE_LIMIT,
-      buildingsUrlPrefix: URL_PREFIX
+      buildingsUrlPrefix: URL_PREFIX,
+      balance: await getBalance()
     });
     return true;
   }

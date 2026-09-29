@@ -863,9 +863,25 @@
     try {
       var cfg = await api("/api/tripo/config");
       state.mock = !!cfg.mock;
-      el.mode.textContent = cfg.mock
-        ? "演示模式：服务端没配 TRIPO_API_KEY，生成的是占位小屋。配置后即可生成真实模型。"
-        : "已接入 Tripo（" + cfg.model + "）";
+      if (cfg.mock) {
+        el.mode.textContent = "演示模式：服务端没配 TRIPO_API_KEY，生成的是占位小屋。配置后即可生成真实模型。";
+      } else {
+        /* 余额是独立于"配没配 Key"的信息：配了 Key 但额度为 0 一样生成失败，
+           直接把它显示出来，省得每次都要去后台查。 */
+        el.mode.textContent = "已接入 Tripo（" + cfg.model + "）";
+        var b = cfg.balance;
+        if (b && typeof b.balance === "number") {
+          el.mode.textContent += " · API 余额 " + b.balance.toFixed(2)
+            + (b.frozen ? "（冻结 " + b.frozen.toFixed(2) + "）" : "");
+          if (b.balance <= 0) {
+            el.mode.innerHTML +=
+              "<br><span style='color:#ff8f8f'>API 额度为 0，无法生成。"
+              + "注意：API 额度与网页版订阅额度是两个池子，需单独充值。</span>";
+          }
+        } else if (b && b.error) {
+          el.mode.textContent += " · 余额查询失败：" + b.error;
+        }
+      }
     } catch (e) {
       if (el.mode) el.mode.textContent = "取不到服务端配置：" + e.message;
     }

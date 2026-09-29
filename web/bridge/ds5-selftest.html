@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>DS5 适配层 · 自检</title>
+<style>
+  body { margin:0; padding:24px; background:#12001c; color:#e8dcff;
+         font:14px/1.7 -apple-system,"PingFang SC",system-ui,sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { opacity:.6; font-size:12px; margin-bottom:18px; }
+  #summary { font-size:16px; font-weight:600; padding:10px 14px; border-radius:10px;
+             margin-bottom:16px; display:inline-block; }
+  .pass { background:rgba(29,158,117,.22); border:1px solid rgba(29,158,117,.6); }
+  .fail { background:rgba(214,48,90,.22); border:1px solid rgba(214,48,90,.6); }
+  li { list-style:none; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .ok { color:#7df0b0; } .no { color:#ff8fa8; }
+  code { opacity:.6; font-size:12px; }
+  #probe { opacity:0; pointer-events:none; position:fixed; left:-9999px; }
+</style>
+<script>
+  /* lp-controller 的内置手柄轮询必须关闭，由 ds5-adapter 独占 */
+  window.LPControllerConfig = { enableGamepad: false, enableWs: false, hud: false, telemetry: false };
+</script>
+</head>
+<body>
+<h1>DS5 适配层 · 自动自检</h1>
+<div class="sub">本页用一只「假 DualSense」驱动真实适配层，逐条断言按键映射与震动反馈。</div>
+<div id="summary">正在运行…</div>
+<ol id="log"></ol>
+
+<!-- 供事件观察器使用的探针节点 -->
+<div id="probe">
+  <button id="home-camera">camera</button>
+  <div id="toast"></div>
+  <b id="collected-count">0</b>
+  <h1 id="region-name">Clover Fields</h1>
+  <button id="view-toggle"><span>近距离</span></button>
+  <button id="interaction" hidden>E</button>
+  <dialog id="probe-dialog"><button class="dialog-close">×</button></dialog>
+</div>
+
+<script src="./lp-controller.js"></script>
+<script>
+/* ============================================================
+ * 1. 假 DualSense
+ * ============================================================ */
+function makePad() {
+  var buttons = [];
+  for (var i = 0; i < 18; i++) buttons.push({ pressed: false, value: 0 });
+  var rumbleCalls = [];
+  return {
+    id: "DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)",
+    index: 0,
+    connected: true,
+    mapping: "standard",
+    axes: [0, 0, 0, 0],
+    buttons: buttons,
+    timestamp: 0,
+    rumbleCalls: rumbleCalls,
+    vibrationActuator: {
+      type: "dual-rumble",
+      playEffect: function (type, params) {
+        rumbleCalls.push({ type: type, params: params || {} });
+        return Promise.resolve("complete");
+      },
+      reset: function () { return Promise.resolve(); }
+    }
+  };
+}
+
+var pad = makePad();
+window.__pad = pad;
+
+/* 配置在适配层加载前写入 */
+window.DS5Config = {
+  padProvider: function () { return [pad]; },
+  hud: false,
+  keycard: false,
+  eventFeedback: true,
+  debug: false
+};
+
+/* 记录 lp-controller 被调用的 API 与真实键盘事件 */
+var calls = [];
+var keyLog = [];
+
+window.addEventListener("keydown", function (e) { keyLog.push("down:" + e.code); }, true);
+window.addEventListener("keyup", function (e) { keyLog.push("up:" + e.code); }, true);
+
+["move", "look", "zoomRate", "tap", "hold", "pressKey", "releaseKey"].forEach(function (n) {
+  var orig = window.LPController[n];
+  window.LPController[n] = function () {
+    calls.push(n + "(" + Array.prototype.join.call(arguments, ",") + ")");
+    return orig.apply(null, arguments);
+  };
+});
+
+var cameraClicks = 0;
+document.getElementById("home-camera").addEventListener("click", function () { cameraClicks++; });
+
+var dialogCloseClicks = 0;
+document.getElementById("probe-dialog")
+  .querySelector(".dialog-close")
+  .addEventListener("click", function () { dialogCloseClicks++; });
+</script>
+<script src="./ds5-adapter.js"></script>
+<script>
+/* ============================================================
+ * 2. 断言工具
+ * ============================================================ */
+var results = [];
+
+function check(name, ok, extra) {
+  results.push({ name: name, ok: !!ok, extra: extra == null ? "" : String(extra) });
+}
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+function callsSince(from) { return calls.slice(from); }
+function keySince(from) { return keyLog.slice(from); }
+
+function hasCall(list, prefix) {
+  for (var i = 0; i < list.length; i++) if (list[i].indexOf(prefix) === 0) return true;
+  return false;
+}
+function hasKey(list, entry) {
+  for (var i = 0; i < list.length; i++) if (list[i] === entry) return true;
+  return false;
+}
+function rumbleSince(from) { return pad.rumbleCalls.slice(from); }
+function hasDuration(list, ms) {
+  for (var i = 0; i < list.length; i++) if (list[i].params.duration === ms) return true;
+  return false;
+}
+function press(idx, value) {
+  pad.buttons[idx].pressed = true;
+  pad.buttons[idx].value = typeof value === "number" ? value : 1;
+}
+function release(idx) {
+  pad.buttons[idx].pressed = false;
+  pad.buttons[idx].value = 0;
+}
+
+/* ============================================================
+ * 3. 测试序列
+ * ============================================================ */
+async function run() {
+  await sleep(250);
+
+  /* --- 0. 接入识别 --- */
+  var st = window.DS5.status();
+  check("识别为 DualSense", st.pad && st.pad.kind === "DualSense", st.pad ? st.pad.id.slice(0, 46) : "无手柄");
+  check("震动能力已探测", st.rumbleSupported === true, "rumbleSupported=" + st.rumbleSupported);
+  var boots = rumbleSince(0);
+  check("接入时给出连接震动", boots.length >= 1, boots.length + " 次震动调用");
+
+  /* --- 1. 空闲时不写入移动，避免抢键盘 --- */
+  var c0 = calls.length;
+  await sleep(220);
+  check("空闲时不干扰键盘/后端", !hasCall(callsSince(c0), "move("), "move 调用 " + callsSince(c0).length + " 次");
+
+  /* --- 2. 左摇杆前进 --- */
+  var c1 = calls.length, k1 = keyLog.length;
+  pad.axes[1] = -1;
+  await sleep(220);
+  var l1 = callsSince(c1), kl1 = keySince(k1);
+  check("左摇杆 -> move(0,-1)", hasCall(l1, "move(0,-1"), l1.join(" | ").slice(0, 70));
+  check("左摇杆 -> 合成 KeyW 按下", hasKey(kl1, "down:KeyW"), "键盘事件 " + kl1.length + " 条");
+
+  /* --- 3. 回中释放 --- */
+  var c2 = calls.length, k2 = keyLog.length;
+  pad.axes[1] = 0;
+  await sleep(220);
+  var l2 = callsSince(c2), kl2 = keySince(k2);
+  check("回中 -> move(0,0)", hasCall(l2, "move(0,0)"), l2.join(" | ").slice(0, 70));
+  check("回中 -> KeyW 抬起", hasKey(kl2, "up:KeyW"), "键盘事件 " + kl2.length + " 条");
+
+  /* --- 4. 右摇杆视角 --- */
+  var c3 = calls.length;
+  pad.axes[2] = 0.8;
+  await sleep(220);
+  check("右摇杆 -> look", hasCall(callsSince(c3), "look("), callsSince(c3).join(" | ").slice(0, 70));
+  pad.axes[2] = 0;
+  await sleep(200);
+
+  /* --- 5. × 跳跃 --- */
+  var c4 = calls.length, k4 = keyLog.length, r4 = pad.rumbleCalls.length;
+  press(0);
+  await sleep(200);
+  check("× -> tap(jump)", hasCall(callsSince(c4), "tap(jump)"), callsSince(c4).join(" | ").slice(0, 70));
+  check("× -> 合成 Space", hasKey(keySince(k4), "down:Space"), "");
+  check("× -> 触觉反馈", rumbleSince(r4).length >= 1, rumbleSince(r4).length + " 次");
+  release(0);
+  await sleep(160);
+
+  /* --- 6. □ 互动 --- */
+  var c5 = calls.length;
+  press(2);
+  await sleep(200);
+  check("□ -> tap(interact)", hasCall(callsSince(c5), "tap(interact)"), callsSince(c5).join(" | ").slice(0, 70));
+  release(2);
+  await sleep(160);
+
+  /* --- 7. △ 换视角 与 ○ 取消 --- */
+  var c6 = calls.length;
+  press(3);
+  await sleep(180);
+  check("△ -> tap(view)", hasCall(callsSince(c6), "tap(view)"), "");
+  release(3);
+  await sleep(140);
+  var c7 = calls.length;
+  press(1);
+  await sleep(180);
+  check("○ -> tap(cancel)", hasCall(callsSince(c7), "tap(cancel)"), "");
+  release(1);
+  await sleep(140);
+
+  /* --- 8. Options / Create --- */
+  var c8 = calls.length;
+  press(9);
+  await sleep(180);
+  check("Options -> tap(journal)", hasCall(callsSince(c8), "tap(journal)"), "");
+  release(9);
+  await sleep(140);
+  var c9 = calls.length;
+  press(8);
+  await sleep(180);
+  check("Create -> tap(help)", hasCall(callsSince(c9), "tap(help)"), "");
+  release(8);
+  await sleep(140);
+
+  /* --- 9. L2 奔跑（模拟量） --- */
+  var c10 = calls.length, k10 = keyLog.length;
+  press(6, 1);
+  await sleep(220);
+  check("L2 -> hold(run,true)", hasCall(callsSince(c10), "hold(run,true)"), callsSince(c10).join(" | ").slice(0, 70));
+  check("L2 -> 合成 Shift 按住", hasKey(keySince(k10), "down:ShiftLeft"), "");
+  var c11 = calls.length, k11 = keyLog.length;
+  release(6);
+  await sleep(220);
+  check("L2 松开 -> hold(run,false)", hasCall(callsSince(c11), "hold(run,false)"), "");
+  check("L2 松开 -> Shift 抬起", hasKey(keySince(k11), "up:ShiftLeft"), "");
+
+  /* --- 10. 扳机阈值：轻按不触发 --- */
+  var c12 = calls.length;
+  press(6, 0.2);
+  await sleep(200);
+  check("L2 轻按(0.2)不触发奔跑", !hasCall(callsSince(c12), "hold(run,true)"), callsSince(c12).join(" | ").slice(0, 60));
+  release(6);
+  await sleep(160);
+
+  /* --- 11. R2 / R1 / L1 缩放 --- */
+  var c13 = calls.length;
+  press(7, 1);
+  await sleep(200);
+  check("R2 -> 拉近", hasCall(callsSince(c13), "zoomRate(1.2"), callsSince(c13).join(" | ").slice(0, 70));
+  var c14 = calls.length;
+  release(7);
+  await sleep(200);
+  check("R2 松开 -> 停止缩放", hasCall(callsSince(c14), "zoomRate(0)"), callsSince(c14).join(" | ").slice(0, 70));
+
+  var c15 = calls.length;
+  press(5);
+  await sleep(200);
+  check("R1 -> 拉近", hasCall(callsSince(c15), "zoomRate(1.2"), "");
+  release(5);
+  await sleep(160);
+
+  var c16 = calls.length;
+  press(4);
+  await sleep(200);
+  check("L1 -> 拉远", hasCall(callsSince(c16), "zoomRate(-1.2"), "");
+  release(4);
+  await sleep(160);
+
+  /* --- 12. 十字键 --- */
+  var c17 = calls.length;
+  press(15);
+  await sleep(200);
+  check("十字键右 -> move(1,0)", hasCall(callsSince(c17), "move(1,0)"), callsSince(c17).join(" | ").slice(0, 70));
+  release(15);
+  await sleep(180);
+
+  /* --- 13. 触摸板 / L3 / R3 --- */
+  var before = cameraClicks;
+  press(17);
+  await sleep(200);
+  check("触摸板 -> 镜头回正", cameraClicks === before + 1, "点击 " + (cameraClicks - before) + " 次");
+  release(17);
+  await sleep(160);
+
+  var c18 = calls.length;
+  press(10);
+  await sleep(180);
+  check("L3 -> tap(home)", hasCall(callsSince(c18), "tap(home)"), "");
+  release(10);
+  await sleep(140);
+
+  var c19 = calls.length;
+  press(11);
+  await sleep(180);
+  check("R3 -> tap(cancel)", hasCall(callsSince(c19), "tap(cancel)"), "");
+  release(11);
+  await sleep(140);
+
+  /* --- 14. 取消动作必须真的关掉弹窗（浏览器默认行为无法由合成事件触发）--- */
+  var dlg = document.getElementById("probe-dialog");
+  dlg.show();
+  var d0 = dialogCloseClicks;
+  press(1);
+  await sleep(200);
+  check("○ -> 走弹窗自己的关闭按钮", dialogCloseClicks === d0 + 1, "点击 " + (dialogCloseClicks - d0) + " 次");
+  check("○ -> 弹窗确实关闭", dlg.open === false, "open=" + dlg.open);
+  release(1);
+  await sleep(160);
+  dlg.show();
+  press(11);
+  await sleep(200);
+  check("R3 -> 弹窗确实关闭", dlg.open === false, "open=" + dlg.open);
+  release(11);
+  await sleep(160);
+
+  /* --- 15. 游戏事件 -> 震动 --- */
+  var r20 = pad.rumbleCalls.length;
+  document.getElementById("collected-count").textContent = "1";
+  await sleep(260);
+  check("收集奇迹 -> 庆祝震动", hasDuration(rumbleSince(r20), 280), rumbleSince(r20).length + " 次");
+
+  var r21 = pad.rumbleCalls.length;
+  document.getElementById("interaction").hidden = false;
+  await sleep(260);
+  check("可互动提示 -> 轻震", hasDuration(rumbleSince(r21), 55), rumbleSince(r21).length + " 次");
+
+  var r22 = pad.rumbleCalls.length;
+  document.getElementById("region-name").textContent = "Industrial Oasis";
+  await sleep(260);
+  check("进入新区域 -> 氛围震动", hasDuration(rumbleSince(r22), 320), rumbleSince(r22).length + " 次");
+
+  /* --- 16. 拔出与重插 --- */
+  pad.connected = false;
+  var c23 = calls.length, k23 = keyLog.length;
+  pad.axes[1] = -1;
+  await sleep(260);
+  check("拔出后不再写入输入", !hasCall(callsSince(c23), "move("), callsSince(c23).join(" | ").slice(0, 60));
+  pad.connected = true;
+  pad.axes[1] = 0;
+  await sleep(260);
+  check("重新接入后恢复响应", window.DS5.status().pad !== null, "");
+
+  /* --- 17. 总开关 --- */
+  window.DS5.setRumble(false);
+  var r24 = pad.rumbleCalls.length;
+  window.DS5.rumble("pick");
+  await sleep(120);
+  check("可关闭震动", rumbleSince(r24).length === 0, "");
+  window.DS5.setRumble(true);
+
+  render();
+}
+
+/* ============================================================
+ * 4. 输出结果
+ * ============================================================ */
+function render() {
+  var passed = 0;
+  var html = "";
+  for (var i = 0; i < results.length; i++) {
+    var r = results[i];
+    if (r.ok) passed++;
+    html += '<li><span class="' + (r.ok ? "ok" : "no") + '">' +
+      (r.ok ? "✔" : "✘") + "</span> " + r.name +
+      (r.extra ? ' <code>' + r.extra + "</code>" : "") + "</li>";
+  }
+  document.getElementById("log").innerHTML = html;
+
+  var failed = results.length - passed;
+  var box = document.getElementById("summary");
+  box.textContent = (failed === 0 ? "全部通过 " : "存在失败 ") + passed + " / " + results.length;
+  box.className = failed === 0 ? "pass" : "fail";
+  document.title = (failed === 0 ? "PASS " : "FAIL ") + passed + "/" + results.length;
+}
+
+window.addEventListener("error", function (e) {
+  check("页面出现脚本错误", false, (e.message || "") + " @" + (e.filename || "") + ":" + (e.lineno || 0));
+  render();
+});
+
+run().catch(function (e) {
+  check("测试序列异常", false, e && e.message);
+  render();
+});
+</script>
+</body>
+</html>

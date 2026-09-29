@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>双人分屏 · 自检</title>
+<style>
+  body { margin:0; padding:24px; background:#12001c; color:#e8dcff;
+         font:14px/1.7 -apple-system,"PingFang SC",system-ui,sans-serif; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { opacity:.6; font-size:12px; margin-bottom:18px; }
+  #summary { font-size:16px; font-weight:600; padding:10px 14px; border-radius:10px;
+             margin-bottom:16px; display:inline-block; }
+  .pass { background:rgba(29,158,117,.22); border:1px solid rgba(29,158,117,.6); }
+  .fail { background:rgba(214,48,90,.22); border:1px solid rgba(214,48,90,.6); }
+  ol { padding:0; }
+  li { list-style:none; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+  .ok { color:#7df0b0; } .no { color:#ff8fa8; }
+  code { opacity:.6; font-size:12px; }
+  .seats { position:fixed; right:12px; bottom:12px; display:flex; gap:8px; opacity:.35; }
+  .seats iframe { width:260px; height:150px; border:1px solid rgba(170,90,255,.4); border-radius:8px; background:#000; }
+</style>
+<script src="./duo-pads.js"></script>
+<script src="./duo-modes.js"></script>
+</head>
+<body>
+<h1>双人分屏 · 自动自检</h1>
+<div class="sub">本页扮演宿主：用两只「假 DualSense」驱动两个真实座位，逐条断言归属规则、分发链路与存档隔离。</div>
+<div id="summary">正在启动两个座位…</div>
+<ol id="log"></ol>
+
+<div class="seats">
+  <iframe id="duo-seat-1" name="duo-seat-1" src="../index.html?seat=1" title="座位 1"></iframe>
+  <iframe id="duo-seat-2" name="duo-seat-2" src="../index.html?seat=2" title="座位 2"></iframe>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var Pads = window.DuoPads;
+  var JOURNAL = "little-planet-journal-v2";
+  var DS_ID = "DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)";
+
+  var results = [];
+  function check(name, ok, extra) {
+    results.push({ name: name, ok: !!ok, extra: extra == null ? "" : String(extra) });
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ============================================================
+   * 假手柄
+   * ============================================================ */
+  function makePad(index, id) {
+    var buttons = [];
+    for (var i = 0; i < 18; i++) buttons.push({ pressed: false, touched: false, value: 0 });
+    var calls = [];
+    return {
+      id: id,
+      index: index,
+      connected: true,
+      mapping: "standard",
+      timestamp: 0,
+      axes: [0, 0, 0, 0],
+      buttons: buttons,
+      calls: calls,
+      vibrationActuator: {
+        type: "dual-rumble",
+        playEffect: function (type, params) {
+          calls.push({ d: params.duration, s: params.strongMagnitude, w: params.weakMagnitude });
+          return Promise.resolve("complete");
+        },
+        reset: function () { return Promise.resolve(); }
+      }
+    };
+  }
+
+  var padA = makePad(0, DS_ID);
+  var padB = makePad(1, DS_ID);
+  var pads = [padA, padB];
+  navigator.getGamepads = function () { return pads; };
+
+  var frames = {
+    1: document.getElementById("duo-seat-1"),
+    2: document.getElementById("duo-seat-2")
+  };
+
+  function seatWin(seat) { return frames[seat].contentWindow; }
+  function seatDoc(seat) { return frames[seat].contentWindow.document; }
+
+  /* 宿主侧分发：与 duo.html 用的是同一套 API */
+  Pads.broadcast(function (seat) { return seatWin(seat); });
+  Pads.listenRumble();
+
+  /* ============================================================
+   * 断言
+   * ============================================================ */
+  async function waitReady(seat, ms) {
+    var t0 = Date.now();
+    while (Date.now() - t0 < (ms || 25000)) {
+      var w = seatWin(seat);
+      var world = w.document && w.document.getElementById("world");
+      if (world && world.dataset.ready === "true" && w.DS5) return true;
+      await sleep(200);
+    }
+    return false;
+  }
+
+  function move(seat) { return seatWin(seat).DS5.status().move; }
+  function kind(seat) { var p = seatWin(seat).DS5.status().pad; return p && p.kind; }
+
+  /* 座位页有独立的 realm，宿主替换 navigator.getGamepads 影响不到它们。
+     机器上若插着真手柄，座位会在快照空档期自读到它 —— 断言于是被真实输入
+     带偏（表现为 P2 不动、空闲时冒出连接震动、超时后手柄还在）。
+     自检要自给自足，就必须把座位侧的自读入口也换成受控列表：
+     这里让它恒为空，正是「座位看不见手柄、只能靠宿主分发」这一条路径。 */
+  function isolateSeats() {
+    var blank = function () { return []; };
+    try { seatWin(1).navigator.getGamepads = blank; } catch (e) { /* 忽略 */ }
+    try { seatWin(2).navigator.getGamepads = blank; } catch (e) { /* 忽略 */ }
+  }
+
+  async function run() {
+    /* ---------- A. 归属规则（纯函数） ---------- */
+    check("0 只手柄 → P1 不占手柄", Pads.pick([], 1) === null, "");
+    check("0 只手柄 → P2 不占手柄", Pads.pick([], 2) === null, "");
+    check("只有 1 只 → 归 P2", Pads.pick([padA], 2) === padA, "");
+    check("只有 1 只 → P1 让给键鼠", Pads.pick([padA], 1) === null, "");
+    check("2 只 → P1 拿第 1 只", Pads.pick(pads, 1) === padA, "");
+    check("2 只 → P2 拿第 2 只", Pads.pick(pads, 2) === padB, "");
+    var shuffled = [padB, padA];
+    check("乱序输入 → 仍按 index 排序", Pads.pick(shuffled, 1) === padA && Pads.pick(shuffled, 2) === padB, "");
+
+    var offline = makePad(5, DS_ID);
+    offline.connected = false;
+    check("离线手柄不占名额，剩下的照常分配",
+      Pads.pick([padA, offline, padB], 1) === padA && Pads.pick([padA, offline, padB], 2) === padB, "");
+    check("只剩 1 只在线时退回「单手柄归 P2」",
+      Pads.pick([padA, offline], 2) === padA && Pads.pick([padA, offline], 1) === null, "");
+
+    /* ---------- B. 快照与签名 ---------- */
+    var snap = Pads.snapshot(padA);
+    var cloneOk = false;
+    try { cloneOk = typeof JSON.parse(JSON.stringify(snap)).buttons[0] === "object"; } catch (e) { cloneOk = false; }
+    check("快照可结构化克隆（不带函数）", cloneOk && !snap.vibrationActuator, "");
+
+    var sig1 = Pads.sig(Pads.snapshot(padA));
+    padA.buttons[6].value = 0.8;
+    var sig2 = Pads.sig(Pads.snapshot(padA));
+    check("签名能识别扳机模拟量变化", sig1 !== sig2, "");
+    padA.buttons[6].value = 0;
+
+    var dir = Pads.bearingText(Pads.parseCoord("0° N 0° E"), Pads.parseCoord("10° N 10° E"));
+    check("方位计算：东偏北判为东北", dir === "东北", dir);
+
+    /* ---------- C. 座位接线 ---------- */
+    var ready1 = await waitReady(1);
+    var ready2 = await waitReady(2);
+    check("座位 1 游戏就绪", ready1, "");
+    check("座位 2 游戏就绪", ready2, "");
+    if (!ready1 || !ready2) { render(); return; }
+
+    check("座位 1 读到 DUO_SEAT", seatWin(1).DUO_SEAT === 1, String(seatWin(1).DUO_SEAT));
+    check("座位 2 读到 DUO_SEAT", seatWin(2).DUO_SEAT === 2, String(seatWin(2).DUO_SEAT));
+    check("座位 1 已接入手柄源", typeof seatWin(1).DS5Config.padProvider === "function", "");
+    check("座位 2 已接入手柄源", typeof seatWin(2).DS5Config.padProvider === "function", "");
+
+    /* 从这一刻起，座位的输入只可能来自宿主广播 */
+    isolateSeats();
+
+    /* ---------- D. 分发：两只手柄各就各位 ---------- */
+    await sleep(900);
+    check("P1 识别为 DualSense", kind(1) === "DualSense", String(kind(1)));
+    check("P2 识别为 DualSense", kind(2) === "DualSense", String(kind(2)));
+    check("P1 震动能力已接通", seatWin(1).DS5.status().rumbleSupported === true, "");
+
+    /* 空闲 1 秒不应出现「反复重连」的震动连发（快照对象每帧都是新的） */
+    padA.calls.length = 0;
+    padB.calls.length = 0;
+    await sleep(1000);
+    check("空闲时不重复触发连接震动", padA.calls.length === 0 && padB.calls.length === 0,
+      "A=" + padA.calls.length + " B=" + padB.calls.length);
+
+    /* ---------- E. 输入互不串扰 ---------- */
+    padA.axes[1] = -1;
+    await sleep(400);
+    check("推动手柄 1 → 只有 P1 移动", move(1) === true && move(2) === false,
+      "P1=" + move(1) + " P2=" + move(2));
+    padA.axes[1] = 0;
+    await sleep(400);
+    check("手柄 1 回中 → P1 停止", move(1) === false, "");
+
+    padB.axes[1] = -1;
+    await sleep(400);
+    check("推动手柄 2 → 只有 P2 移动", move(2) === true && move(1) === false,
+      "P1=" + move(1) + " P2=" + move(2));
+    padB.axes[1] = 0;
+    await sleep(400);
+    check("手柄 2 回中 → P2 停止", move(2) === false, "");
+
+    /* 座位 2 的键盘防护只能拦真实键盘，不能拦适配层合成的按键 ——
+       如果拦了，上面的 P2 移动断言就会失败，这里再直接证一次 */
+    padB.buttons[0].pressed = true;
+    await sleep(300);
+    check("座位 2 的键盘防护不拦截合成按键", move(2) === false && seatWin(2).DS5.status().lastRumble === "jump",
+      "lastRumble=" + seatWin(2).DS5.status().lastRumble);
+    padB.buttons[0].pressed = false;
+    await sleep(300);
+
+    /* ---------- F. 空消息不得覆盖有效快照（回归） ---------- */
+    pads = [];
+    await sleep(400);
+    check("广播方看不到手柄时，座位仍持有快照", kind(2) === "DualSense", String(kind(2)));
+    await sleep(1200);
+    check("快照超时后座位如实断开", kind(2) === null, String(kind(2)));
+    pads = [padA, padB];
+    await sleep(900);
+    check("手柄回来 → 座位自动恢复", kind(2) === "DualSense", String(kind(2)));
+
+    /* ---------- G. 存档隔离 ---------- */
+    localStorage.removeItem("duo:1:" + JOURNAL);
+    localStorage.removeItem("duo:2:" + JOURNAL);
+    var w1 = seatWin(1);
+    w1.localStorage.setItem(JOURNAL, JSON.stringify(["forest"]));
+    check("座位 1 写档落到自己的命名空间",
+      localStorage.getItem("duo:1:" + JOURNAL) === JSON.stringify(["forest"]),
+      String(localStorage.getItem("duo:1:" + JOURNAL)));
+    check("座位 1 能读回自己的档", w1.localStorage.getItem(JOURNAL) === JSON.stringify(["forest"]), "");
+    check("座位 2 读同一逻辑键互不干扰",
+      seatWin(2).localStorage.getItem(JOURNAL) === null,
+      String(seatWin(2).localStorage.getItem(JOURNAL)));
+
+    /* ---------- H. 震动回传到正确的手柄 ---------- */
+    padA.calls.length = 0;
+    padB.calls.length = 0;
+    padB.buttons[0].pressed = true;
+    await sleep(500);
+    check("P2 的震动打在手柄 2 上", padB.calls.length > 0, "B=" + padB.calls.length);
+    check("P2 的震动没有打在手柄 1 上", padA.calls.length === 0, "A=" + padA.calls.length);
+    padB.buttons[0].pressed = false;
+    await sleep(400);
+
+    padA.calls.length = 0;
+    padB.calls.length = 0;
+    padA.buttons[0].pressed = true;
+    await sleep(500);
+    check("P1 的震动打在手柄 1 上", padA.calls.length > 0, "A=" + padA.calls.length);
+    check("P1 的震动没有打在手柄 2 上", padB.calls.length === 0, "B=" + padB.calls.length);
+    padA.buttons[0].pressed = false;
+
+    /* ---------- I. 汇总板：累计移动 / 换区计数 ---------- */
+    var board = window.DuoModes.Board();
+    board.update(1, { coords: "0.0° N 0.0° E", region: "Aurora Plains", collected: 0 });
+    board.update(2, { coords: "0.0° N 0.0° E", region: "Aurora Plains", collected: 0 });
+    board.update(1, { coords: "10.0° N 0.0° E", region: "Aurora Plains", collected: 0 });
+    board.update(1, { coords: "20.0° N 0.0° E", region: "Fernwood", collected: 1 });
+    check("Board 累计双方距离", board.totalDist(1) > 0, "P1=" + board.totalDist(1).toFixed(1));
+    check("Board 区域切换计数", board.regionSwitch(1) === 1, "P1=" + board.regionSwitch(1));
+    board.reset();
+    check("Board reset 后距离清零", board.totalDist(1) === 0, "P1=" + board.totalDist(1));
+
+    /* ---------- J. 速度赛：start / 自动判定胜方 / 再来一局 ---------- */
+    var race = window.DuoModes.Race();
+    check("Race 起始未运行", race.isRunning() === false, "");
+    race.start();
+    check("Race start 后 running", race.isRunning() === true, "");
+    check("Race 起始 finished 为空", race.finished()[1] === null && race.finished()[2] === null, "");
+    /* P2 先达到 7，P2 应该被标记为胜 */
+    race.update(1, { collected: 3 });
+    race.update(2, { collected: 7 });
+    check("Race P2 到 7 时标记胜方", race.finished()[2] !== null, "P2=" + race.finished()[2] + "ms");
+    check("Race 胜方出来后停止计时", race.isRunning() === false, "");
+    check("Race P1 未到 7 时未结算", race.finished()[1] === null, "P1=null");
+
+    var race2 = window.DuoModes.Race();
+    race2.start();
+    race2.update(1, { collected: 7 });
+    check("Race 第二局 P1 胜方", race2.finished()[1] !== null && race2.finished()[2] === null, "P1=" + race2.finished()[1] + "ms");
+
+    /* 字符串 collected 不覆盖数字进度（根因修复 —— 座位在零数据帧会
+       持续上报 {collected:"0"}，单写 last 会被它反复顶回 0） */
+    var race3 = window.DuoModes.Race();
+    race3.start();
+    race3.update(1, { collected: 3 });
+    race3.update(1, { collected: "0" });
+    check("Race 字符串 collected 不回退数字进度", race3.finished()[1] === null, "finished[1]=" + race3.finished()[1]);
+
+    /* ---------- K. 信标：区域切换 / 奇迹增加触发 ---------- */
+    var beacon = window.DuoModes.Beacon();
+    beacon.update(1, { coords: "0.0", region: "Aurora Plains", collected: 0 });
+    beacon.update(1, { coords: "1.0", region: "Fernwood", collected: 0 });
+    check("Beacon 区域切换触发信标", beacon.active().some(function (b) { return b.seat === 1 && b.kind === "region"; }), "n=" + beacon.active().length);
+    beacon.update(1, { coords: "2.0", region: "Fernwood", collected: 1 });
+    check("Beacon 奇迹增加触发信标", beacon.active().some(function (b) { return b.seat === 1 && b.kind === "collect"; }), "n=" + beacon.active().length);
+    beacon.tick();
+    check("Beacon tick 后保持活跃", beacon.active().length >= 2, "n=" + beacon.active().length);
+    /* 同 seat 同 kind 不应叠加 —— 再次进入新区域时旧 region 信标被替换 */
+    beacon.update(2, { coords: "0.0", region: "Aurora Plains", collected: 0 });
+    beacon.update(2, { coords: "1.0", region: "Aurora Plains", collected: 0 });
+    check("Beacon 同 seat 同 kind 不叠加", beacon.active().filter(function (b) { return b.kind === "region"; }).length === 1, "n=" + beacon.active().length);
+
+    localStorage.removeItem("duo:1:" + JOURNAL);
+    localStorage.removeItem("duo:2:" + JOURNAL);
+    render();
+  }
+
+  function render() {
+    var passed = 0;
+    var html = "";
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      if (r.ok) passed++;
+      html += '<li><span class="' + (r.ok ? "ok" : "no") + '">' +
+        (r.ok ? "✔" : "✘") + "</span> " + r.name +
+        (r.extra ? ' <code>' + r.extra + "</code>" : "") + "</li>";
+    }
+    document.getElementById("log").innerHTML = html;
+
+    var failed = results.length - passed;
+    var box = document.getElementById("summary");
+    box.textContent = (failed === 0 ? "全部通过 " : "存在失败 ") + passed + " / " + results.length;
+    box.className = failed === 0 ? "pass" : "fail";
+    document.title = (failed === 0 ? "PASS " : "FAIL ") + passed + "/" + results.length;
+  }
+
+  window.addEventListener("error", function (e) {
+    check("页面出现脚本错误", false, (e.message || "") + " @" + (e.filename || "") + ":" + (e.lineno || 0));
+    render();
+  });
+
+  run().catch(function (e) {
+    check("测试序列异常", false, e && e.message);
+    render();
+  });
+})();
+</script>
+</body>
+</html>

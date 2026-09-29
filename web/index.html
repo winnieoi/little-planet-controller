@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1a0020" />
+    <meta name="description" content="一座霓虹闪烁的赛博朋克低多边形小岛。漫步紫色草原、工业绿洲与珊瑚礁，收集属于你的数字奇迹。" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230c292d'/%3E%3Cpath d='M32 8 12 44h13v12h14V44h13Z' fill='%23bce091'/%3E%3C/svg%3E" />
+    <title>Little Planet · 口袋星球</title>
+    <!-- 分屏双人的「座位」接线：必须早于游戏脚本执行（存档隔离要抢在它前面）。
+         只有 URL 带 ?seat=N 时才生效，单人玩法下它们什么都不做。 -->
+    <script src="./bridge/duo-pads.js"></script>
+    <script src="./bridge/duo-seat.js"></script>
+    <!-- 昼夜主题：?theme=day 加载白天版资源，默认夜晚版。
+         游戏本体文件不动 —— 白天版是按官方昼夜配色逐项映射生成的副本资源。
+         module 必须等 DOM 解析完再插入：动态插入的 module 默认 async，
+         可能赶在 body 解析前执行（那时 #world 还不存在）；
+         DOMContentLoaded 之后插入则与原先静态 module 的 defer 行为完全一致。 -->
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var cyberPlanet = q.get("planet") === "cyber";
+        /* 赛博星球自带运行时昼夜（integration/daylight-mode.js），
+           ?theme 的资源副本切换只在原版星球生效 */
+        var day = q.get("theme") === "day" && !cyberPlanet;
+        /* 建造模式（?build=1）需要场景钩子 window.__LP_SCENE__/__LP_WORLD__，
+           官方原文件没有这行，所以用 tools/add-lp-hook.mjs 生成的副本
+           （与白天版、赛博版同样的做法：副本资源，官方原文件一行未动）。
+           赛博星球副本本来就带钩子，不再区分。 */
+        var build = q.get("build") === "1";
+        /* 游戏本体按星球选副本 */
+        var module = cyberPlanet    ? "index-cyber-CS6g4Xtd.js"
+                   : day && build   ? "index-tripo-day-CS6g4Xtd.js"
+                   : build          ? "index-tripo-CS6g4Xtd.js"
+                   : day            ? "index-day-CS6g4Xtd.js"
+                   :                  "index-CS6g4Xtd.js";
+        var css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.crossOrigin = "anonymous";
+        css.href = "./assets/" + (day ? "index-day-" : "index-") + "CundtmH4.css";
+        document.head.appendChild(css);
+        function boot() {
+          var s = document.createElement("script");
+          s.type = "module";
+          s.crossOrigin = "anonymous";
+          s.src = "./assets/" + module;
+          document.head.appendChild(s);
+        }
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", boot);
+        } else {
+          boot();
+        }
+      })();
+    </script>
+    <!-- 星球选择：?planet=cyber 时加载「赛博星球」集成层（57MB GLB 高精度模型
+         + 运行时昼夜切换）。两个脚本都是经典脚本、自带轮询等待游戏场景，
+         动态插入时机安全。不传参数时什么都不加载，原版星球零影响。 -->
+    <script>
+      (function () {
+        if (new URLSearchParams(location.search).get("planet") !== "cyber") return;
+        ["./integration/cyber-planet.js", "./integration/daylight-mode.js"].forEach(function (src) {
+          var s = document.createElement("script");
+          s.src = src;
+          document.head.appendChild(s);
+        });
+      })();
+    </script>
+    <link rel="modulepreload" crossorigin href="./assets/three-gtj_l2uB.js">
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="world" aria-label="口袋星球三维游戏。使用 WASD 移动，空格跳跃，E 互动。" tabindex="0"></canvas>
+      <div class="vignette" aria-hidden="true"></div>
+      <header class="topbar">
+        <a class="wordmark" href="./" aria-label="Little Planet 首页"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="11" stroke-width=".8"/><ellipse cx="18" cy="18" rx="17" ry="5" transform="rotate(-32 18 18)" stroke-width=".8"/><ellipse cx="18" cy="18" rx="4.5" ry="11" transform="rotate(-24 18 18)" stroke-width=".6"/><circle cx="30" cy="6" r="2" fill="currentColor" stroke="none"/></svg><span>LITTLE PLANET<small>A POCKET ADVENTURE</small></span></a>
+        <div class="top-actions">
+          <span class="weather"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1m0-15.6-2.1 2.1M6.3 17.7l-2.1 2.1"/></svg>一日晴好</span>
+          <button class="icon-button" id="sound-toggle" aria-label="开启自然音效" title="自然音效" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5ZM16 9l6 6m0-6-6 6"/></svg></button>
+          <button class="icon-button" id="help-toggle" aria-label="打开操作说明" title="操作说明"><span>?</span></button>
+        </div>
+      </header>
+      <aside class="journal-pill" aria-label="探索进度"><span class="journal-icon">✧</span><div><span class="tiny-label">ISLAND JOURNAL</span><span>小小奇迹 <b id="collected-count">0</b><span class="muted"> / 7</span></span></div><button id="journal-toggle" aria-label="打开探索手记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></aside>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <button id="interaction" class="interaction" hidden><kbd>E</kbd><span id="interaction-label">探索</span></button>
+      <section class="location" aria-live="polite"><div class="location-rule"></div><p class="tiny-label" id="region-number">REGION 01 / THE MEADOW</p><h1 id="region-name">Clover Fields</h1><p class="location-cn" id="region-cn">三叶草原</p><p class="location-desc" id="region-description">风吹过草地，今天也不必着急。</p><span class="location-coordinates" id="coordinates">24° N &nbsp; 118° E</span></section>
+      <nav class="control-bar" aria-label="游戏操作提示"><span><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span>移动</span><i></i><span><kbd>Shift</kbd>奔跑</span><span><kbd>Space</kbd>跳跃</span><span><kbd>E</kbd>互动</span><i></i><span><kbd>V</kbd>切换视角</span><span class="mouse-hint">拖拽环视 · 滚轮缩放</span></nav>
+      <div class="view-controls"><button id="view-toggle" aria-label="切换视角" title="切换视角（M / V）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16"/></svg><span>近距离</span><kbd>V</kbd></button><button id="home-camera" class="icon-button" aria-label="镜头回到角色" title="镜头回到角色"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></button></div>
+      <div class="compass" aria-hidden="true"><span>N</span><svg viewBox="0 0 40 40"><path d="m20 4 6 23-6-4-6 4Z" fill="#e0c0ff"/><path d="m20 36 6-9-6-4-6 4Z" fill="#6a3a8c"/></svg></div>
+      <div class="touch-controls"><div id="joystick" aria-label="拖动摇杆移动"><div id="joystick-stick"></div></div><div class="touch-actions"><button id="touch-interact" aria-label="互动">E</button><button id="touch-jump" aria-label="跳跃">↑</button></div></div>
+      <dialog id="help-dialog"><button class="dialog-close" aria-label="关闭操作说明">×</button><p class="tiny-label">CYBERPUNK ODYSSEY</p><h2>欢迎来到霓虹星球</h2><p class="dialog-intro">沿着数据小径，去看看工业绿洲与珊瑚礁。<br>这里没有倒计时，只有七处等待被发现的数字奇迹。</p><dl class="help-keys"><div><dt><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd></dt><dd>自由移动</dd></div><div><dt><kbd>Shift</kbd> / <kbd>Space</kbd></dt><dd>奔跑 / 跳跃</dd></div><div><dt><kbd>E</kbd></dt><dd>与附近的地标互动</dd></div><div><dt>点击地面 / 拖动画面</dt><dd>走向目标 / 环视星球</dd></div><div><dt>滚轮 / <kbd>M</kbd></dt><dd>缩放 / 星球视角</dd></div></dl><p class="help-mobile">可以游泳跨海。J 打开手记导航，Home 回到草原，Esc 取消路线。触屏：左下摇杆移动，右下按钮跳跃与互动，拖动场景环视。</p><p class="help-mobile">手柄（已适配 PS5 DualSense）：左摇杆移动，右摇杆环视，<kbd>×</kbd> 跳跃，<kbd>□</kbd> 互动，<kbd>△</kbd> 换视角，<kbd>○</kbd> 取消/关闭弹窗，<kbd>L2</kbd> 奔跑，<kbd>R2</kbd>/<kbd>R1</kbd> 拉近，<kbd>L1</kbd> 拉远，触摸板镜头回正，并带震动反馈。</p><button class="primary-button" id="help-start">开始霓虹之旅 <span>↗</span></button></dialog>
+      <dialog id="journal-dialog"><button class="dialog-close" aria-label="关闭探索手记">×</button><p class="tiny-label">NEON DESTINATIONS</p><h2>霓虹世界的七个角落</h2><p class="dialog-intro" id="journal-intro">点击地点自动前往，靠近霓虹标记后按 E 互动。</p><ol id="journal-list"></ol><button class="subtle-button" id="reset-progress">重新启动这段旅程</button></dialog>
+      <div id="loading"><svg viewBox="0 0 30 34"><path d="M15 2 5 18h6L3 28h11v5h2v-5h11l-8-10h6L15 2Z" fill="currentColor"/></svg><p>赛博星球正在启动<span>…</span></p><small>CYBER LITTLE PLANET</small></div>
+    </main>
+    <!-- 1) lp-controller 的内置手柄轮询交给 ds5-adapter 独占，避免两套逻辑互相覆盖；
+           它自带的顶部状态条也关掉 —— ds5-adapter 左下角那条信息更全（含灯条/扳机状态）。 -->
+    <script>
+      window.LPControllerConfig = { enableGamepad: false, hud: false };
+    </script>
+    <!-- 2) 通用输入桥接层（键盘合成 + 后端 WebSocket） -->
+    <script src="./bridge/lp-controller.js"></script>
+    <!-- 3) DS5 硬件输出层：灯条 / 自适应扳机 / 连续振动（WebHID，只写不读输入） -->
+    <script src="./bridge/dualsense.js"></script>
+    <script src="./bridge/lp-dualsense.js"></script>
+    <!-- 4) DS5 适配层：输入映射 + 事件振动 + HUD（必须最后加载） -->
+    <script src="./bridge/ds5-adapter.js"></script>
+    <!-- 5) 双人合作模式入口：右上角「👥 双人模式」按钮（分屏座位里不显示）。
+           必须在 day-night.js 之前加载：它建的容器同时收纳昼夜按钮。 -->
+    <script src="./bridge/duo-entry.js"></script>
+    <!-- 6) 昼夜切换：右上角浮动按钮（分屏座位里不显示，切时间由宿主页统一做） -->
+    <script src="./bridge/day-night.js"></script>
+    <!-- 7) 星球切换：原版星球 ↔ 赛博星球（GLB 高精度模型），整页换 ?planet 参数 -->
+    <script src="./bridge/planet-switch.js"></script>
+    <!-- 8) 建造工坊：收集奇迹攒积分 → Tripo 生成 3D 建筑 → 摆在星球表面。
+           需要场景钩子：赛博星球页自带；原版星球请用 ?build=1（进度不丢）。
+           分屏座位（?seat=N）里自动不挂载。 -->
+    <script src="./bridge/tripo-build.js"></script>
+  </body>
+</html>

@@ -11,3 +11,6 @@ node_modules/
 
 # 运行时生成：玩家收集奇迹后生成的建筑 GLB 与清单，随存档变化，不进版本控制
 /web/models/buildings/
+
+# Tripo API Key（私密，绝不入库）
+.tripo-key

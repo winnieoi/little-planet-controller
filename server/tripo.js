@@ -58,6 +58,25 @@ function log(...args) {
  * Tripo 调用
  * ============================================================ */
 
+/* 把 Tripo 的业务码翻成玩家看得懂的话。
+   直接把上游英文原文抛给前端的话，玩家只会看到一整句 "You don't have enough
+   credit to create this task"，既看不懂也不知道该怎么办。 */
+const CODE_HINT = {
+  1001: "API Key 无效或已失效，检查 TRIPO_API_KEY 是否正确",
+  1002: "API Key 权限不足，确认这个 Key 开通了 3D 生成权限",
+  1004: "请求参数不合法（task_id 必须是 UUID）",
+  2010: "账户额度不足，去 tripo3d.ai 充值后再试",
+  4001: "接口路径不存在，可能是 Tripo 改版了 API",
+  4290: "请求太频繁，被限流了，稍等一会儿再试"
+};
+
+function friendlyError(code, httpStatus, rawMsg) {
+  const hint = code !== undefined && CODE_HINT[code];
+  const head = "Tripo " + ((code !== undefined ? "code " + code : httpStatus) + "");
+  return new Error(hint ? head + "：" + hint + "（原文：" + rawMsg + "）"
+                        : head + "：" + rawMsg);
+}
+
 async function tripo(method, urlPath, body) {
   const res = await fetch(BASE + urlPath, {
     method,
@@ -76,11 +95,11 @@ async function tripo(method, urlPath, body) {
   }
   if (!res.ok) {
     const msg = (data && (data.message || data.msg)) || text.slice(0, 300);
-    throw new Error("Tripo " + res.status + ": " + msg);
+    throw friendlyError(data && data.code, res.status, msg);
   }
   /* Tripo 的 HTTP 状态码可能是 200 但业务码非 0 */
   if (data && typeof data.code === "number" && data.code !== 0) {
-    throw new Error("Tripo code " + data.code + ": " + (data.message || JSON.stringify(data)));
+    throw friendlyError(data.code, res.status, data.message || JSON.stringify(data));
   }
   return data || {};
 }

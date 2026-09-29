@@ -23,8 +23,20 @@ fi
 
 PORT="${PORT:-8765}"
 
+# Tripo API Key：优先用环境变量，其次读项目根目录的 .tripo-key
+# （把 Key 存成文件，就不用每次敲在命令行里、也不会留在 shell 历史记录中）
+if [[ -z "$TRIPO_API_KEY" && -f .tripo-key ]]; then
+  TRIPO_API_KEY="$(tr -d '[:space:]' < .tripo-key)"
+  export TRIPO_API_KEY
+fi
+
 echo ""
 echo "  使用 Node: $NODE_BIN"
+if [[ -n "$TRIPO_API_KEY" ]]; then
+  echo "  Tripo:      真实模式（已读到 API Key）"
+else
+  echo "  Tripo:      mock 模式（未配置 Key，生成的是占位小屋）"
+fi
 echo "  正在启动联调服务器…"
 echo ""
 

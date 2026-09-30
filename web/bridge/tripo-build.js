@@ -697,8 +697,10 @@
     var box = document.getElementById("toast");
     if (box) {
       box.textContent = text;
-      box.classList.add("is-visible");
-      setTimeout(function () { box.classList.remove("is-visible"); }, 2600);
+      /* 游戏样式表里的类名是 .toast.visible（见 assets/index-*.css），
+         早先写的 is-visible 对不上，导致提示一直不显示。 */
+      box.classList.add("visible");
+      setTimeout(function () { box.classList.remove("visible"); }, 2600);
     }
     console.log("[tripo-build] " + text);
   }

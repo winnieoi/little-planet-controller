@@ -34,7 +34,11 @@ const crypto = require("node:crypto");
 
 const BASE = "https://openapi.tripo3d.ai/v3";
 const WEB_ROOT = path.resolve(__dirname, "..", "web");
-const OUT_DIR = path.join(WEB_ROOT, "models", "buildings");
+/* 落盘目录默认在 web/models/buildings，但可以用环境变量指到别处 ——
+   主要是为了跑测试时不往真实目录里塞垃圾文件。 */
+const OUT_DIR = process.env.TRIPO_OUT_DIR
+  ? path.resolve(process.env.TRIPO_OUT_DIR)
+  : path.join(WEB_ROOT, "models", "buildings");
 const URL_PREFIX = "/models/buildings";
 const INDEX_FILE = path.join(OUT_DIR, "index.json");
 
@@ -174,7 +178,9 @@ async function getTask(taskId) {
  * ============================================================ */
 
 const mockTasks = new Map();
-const MOCK_DURATION_MS = 6000;
+/* mock 生成的"假装耗时"。默认 6 秒接近真实体验；录演示视频时可以调短，
+   不然进度条占掉大半篇幅。 */
+const MOCK_DURATION_MS = Number(process.env.TRIPO_MOCK_MS || 6000);
 
 function buildMockGlb() {
   const tris = [];
@@ -366,6 +372,40 @@ function safeFile(name) {
   return String(name || "").replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
 }
 
+/* taskId → 该任务的缓存键。任务创建时记下，落盘时写进索引，
+   之后同样的描述就能直接命中这个已有模型。
+   只存在内存里：进程重启后新生成的模型不会被打上缓存键（不影响正确性，
+   只是少一次省钱的命中机会），而索引里已有的缓存记录是持久的。 */
+const pendingCacheKeys = new Map();
+
+/** 归一化描述词：去首尾空、压连续空白。大小写差异也算同一个需求 */
+function normalizePrompt(p) {
+  return String(p || "").trim().replace(/\s+/g, " ");
+}
+
+function cacheKeyFor(prompt, opts) {
+  const o = opts || {};
+  const model = o.model || DEFAULT_MODEL;
+  const faces = Number(o.face_limit) || DEFAULT_FACE_LIMIT;
+  const tex = o.texture === undefined ? true : !!o.texture;
+  return [normalizePrompt(prompt), model, faces, tex].join("|");
+}
+
+/** 在已有建筑里找同参数的成品：命中就直接复用，不再向 Tripo 扣一次钱 */
+async function findCached(key) {
+  const list = await readIndex();
+  for (const b of list) {
+    if (b.cacheKey !== key || !b.file) continue;
+    try {
+      await fsp.stat(path.join(OUT_DIR, b.file));
+      return b;
+    } catch (e) {
+      /* 文件被删了就当没命中 */
+    }
+  }
+  return null;
+}
+
 async function readIndex() {
   try {
     const raw = await fsp.readFile(INDEX_FILE, "utf8");
@@ -425,7 +465,20 @@ async function saveTaskModel(taskId, prompt) {
   await fsp.writeFile(path.join(OUT_DIR, file), buffer);
 
   const list = await readIndex();
-  list.push({ file, prompt: String(prompt || "").slice(0, 200), taskId, createdAt: Date.now(), size: buffer.length });
+  const entry = {
+    file,
+    prompt: String(prompt || "").slice(0, 200),
+    taskId,
+    createdAt: Date.now(),
+    size: buffer.length
+  };
+  /* 打上缓存键，下次同样的需求直接复用这个模型，不重复扣费 */
+  const key = pendingCacheKeys.get(taskId);
+  if (key) {
+    entry.cacheKey = key;
+    pendingCacheKeys.delete(taskId);
+  }
+  list.push(entry);
   await writeIndex(list);
 
   log("已保存:", file, (buffer.length / 1024).toFixed(0) + "KB");
@@ -530,6 +583,16 @@ async function handle(req, res, pathname, url) {
       return true;
     }
     try {
+      /* 先查缓存：同样的描述 + 模型 + 面数 + 贴图配置已经有成品，
+         就直接复用，不再向 Tripo 提交任务（省一次真实扣费）。 */
+      const key = cacheKeyFor(payload.fileToken ? payload.fileToken : prompt, payload);
+      const hit = await findCached(key);
+      if (hit) {
+        log("缓存命中，直接复用:", hit.file, JSON.stringify(normalizePrompt(prompt).slice(0, 40)));
+        send(res, 200, { ok: true, taskId: "cached:" + hit.file, cached: true, mock: false });
+        return true;
+      }
+
       let taskId;
       if (!hasKey()) {
         taskId = createMockTask(prompt);
@@ -540,7 +603,8 @@ async function handle(req, res, pathname, url) {
         taskId = await createTextTask(prompt, payload);
       }
       if (!taskId) throw new Error("Tripo 没有返回 task_id");
-      send(res, 200, { ok: true, taskId, mock: !hasKey() });
+      pendingCacheKeys.set(taskId, key);
+      send(res, 200, { ok: true, taskId, mock: !hasKey(), cached: false });
     } catch (e) {
       log("生成失败:", e.message);
       send(res, 502, { ok: false, error: e.message });
@@ -572,6 +636,25 @@ async function handle(req, res, pathname, url) {
       send(res, 400, { ok: false, error: "缺少 taskId" });
       return true;
     }
+    /* 缓存命中的任务不用问上游，直接伪装成一个已经 success 的任务视图，
+       前端的「轮询 → 落盘」流程一行都不用改。 */
+    if (taskId.startsWith("cached:")) {
+      const file = taskId.slice("cached:".length);
+      send(res, 200, {
+        ok: true,
+        cached: true,
+        mock: false,
+        code: 0,
+        data: {
+          task_id: taskId,
+          type: "cached",
+          status: "success",
+          progress: 100,
+          output: { model_url: URL_PREFIX + "/" + file }
+        }
+      });
+      return true;
+    }
     try {
       const data = taskId.startsWith("mock_") ? mockTaskView(taskId) : await getTask(taskId);
       if (!data) {
@@ -594,6 +677,21 @@ async function handle(req, res, pathname, url) {
       return true;
     }
     try {
+      /* 缓存命中时没有真的去生成，也不需要再下载一次，直接返回已有文件 */
+      const tid = String(payload.taskId || "");
+      if (tid.startsWith("cached:")) {
+        const file = safeFile(tid.slice("cached:".length));
+        const stat = await fsp.stat(path.join(OUT_DIR, file));
+        send(res, 200, {
+          ok: true,
+          cached: true,
+          mock: false,
+          file,
+          url: URL_PREFIX + "/" + file,
+          size: stat.size
+        });
+        return true;
+      }
       const saved = await saveTaskModel(payload.taskId, payload.prompt);
       send(res, 200, { ok: true, mock: String(payload.taskId || "").startsWith("mock_"), ...saved });
     } catch (e) {

@@ -548,7 +548,17 @@
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  /* 离线单文件版（file://）没有后端可连，任何 fetch 都会因跨域被拦。
+     这里统一判一下，让上层能给出"需要起本地服务器"这种可执行的提示，
+     而不是丢一个 "Cross origin requests are only supported for HTTP." 给用户看。 */
+  function isOffline() {
+    return location.protocol === "file:";
+  }
+
   async function api(path, opts) {
+    if (isOffline()) {
+      throw new Error("建造工坊需要后端服务，离线单文件版用不了。请用 start.command 启动后打开 http://localhost:8765/?build=1");
+    }
     var res = await fetch(path, opts);
     var data = await res.json().catch(function () { return { ok: false, error: "响应不是 JSON" }; });
     if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
@@ -885,7 +895,11 @@
         }
       }
     } catch (e) {
-      if (el.mode) el.mode.textContent = "取不到服务端配置：" + e.message;
+      if (el.mode) {
+        el.mode.textContent = isOffline()
+          ? "离线版无法生成建筑（没有后端）。用 start.command 启动后访问 localhost:8765/?build=1"
+          : "取不到服务端配置：" + e.message;
+      }
     }
 
     try {

@@ -21,6 +21,19 @@ const OUT = path.join(ROOT, "赛博小星球-DS5离线版.html");
 /* 顺序必须和 web/index.html 里一致，改了这里也要改那里（tests/test-page-wiring.mjs 会盯着） */
 const BRIDGE_SCRIPTS = ["lp-controller.js", "dualsense.js", "lp-dualsense.js", "ds5-adapter.js"];
 
+/* 除了上面那四个"核心桥接"，index.html 里还挂着一批玩法脚本（双人、昼夜、星球切换、
+   建造工坊……）。它们也必须内联，否则 file:// 下会被 CORS 拦掉，
+   页面看着能开，实际渲染不出东西 —— 而且控制台报的是"Not allowed to load local resource"，
+   跟"打包漏了"这个真因隔着一层，很容易查错方向。
+   这份清单以前是硬编码的，新增脚本时没人回来改，结果漏了一大批。改成从 index.html 现读。 */
+function bridgeScriptsInHtml(html) {
+  const names = [];
+  const re = /<script src="\.\/bridge\/([^"]+)"><\/script>/g;
+  let m;
+  while ((m = re.exec(html))) names.push(m[1]);
+  return names;
+}
+
 function read(p) {
   return fs.readFileSync(p, "utf8");
 }
@@ -82,20 +95,59 @@ const gameBundle = [
 ].join("\n");
 
 /* ---------- 2. 桥接层：原样内联，只加一行注释标注来源 ---------- */
-const bridgeBundles = BRIDGE_SCRIPTS.map((name) => {
+/* 内联顺序以 index.html 为准，保证跟浏览器里加载的顺序完全一致 */
+const inlineOrder = (() => {
+  const inHtml = bridgeScriptsInHtml(html);
+  assert(inHtml.length > 0, "index.html 里一个 bridge 脚本都没找到，是不是结构改过了？");
+  for (const core of BRIDGE_SCRIPTS) {
+    assert(inHtml.includes(core), `index.html 里缺少核心桥接脚本 ${core}`);
+  }
+  return inHtml;
+})();
+
+const bridgeBundles = inlineOrder.map((name) => {
   const file = path.join(SRC, "bridge", name);
-  assert(fs.existsSync(file), `缺少 web/bridge/${name}`);
+  assert(fs.existsSync(file), `index.html 引用了 web/bridge/${name}，但文件不存在`);
   return `/* bridge/${name} */\n${safe(read(file))}`;
 });
 
 /* ---------- 3. 拼 HTML ---------- */
-let out = html
-  .replace(/\s*<script type="module"[^>]*src="\.\/assets\/index-[^"]+\.js"><\/script>/, "")
-  .replace(/\s*<link rel="modulepreload"[^>]*>/, "")
-  .replace(
-    /\s*<link rel="stylesheet"[^>]*href="\.\/assets\/index-[^"]+\.css">/,
-    `\n    <style>${stylesheet}</style>`
+let out = html.replace(/\s*<link rel="modulepreload"[^>]*>/, "");
+
+/* 样式表：index.html 现在不是写死的 <link rel="stylesheet">，而是在一段内联 JS 里
+   运行时 createElement("link") 再 appendChild（为了按昼夜切主题）。
+   所以不能只按 <link> 标签去找，得识别这段动态插入逻辑，把整个 IIFE 替换成
+   一个"已经注入好样式"的桩 —— 离线版样式是内联的，不需要再发请求。 */
+const CSS_HREF_RE = /css\.href\s*=\s*"\.\/assets\/"[^;]*;/;
+const dynStyleOk = CSS_HREF_RE.test(out);
+assert(
+  dynStyleOk || /<link rel="stylesheet"[^>]*href="\.\/assets\//.test(out),
+  "既没找到动态插入的样式表，也没找到 <link rel=\"stylesheet\">，index.html 的样式加载方式变了"
+);
+
+if (dynStyleOk) {
+  /* 把动态插入样式的两行去掉（createElement + rel + crossOrigin + href），
+     保留后面的 boot() 逻辑不动。 */
+  out = out.replace(
+    /var css = document\.createElement\("link"\);\s*css\.rel = "stylesheet";\s*css\.crossOrigin = "anonymous";\s*css\.href = "\.\/assets\/"[^;]*;\s*document\.head\.appendChild\(css\);/,
+    "/* 样式已内联，离线版不需要动态插入 */"
   );
+  assert(!/css\.href/.test(out), "动态插入样式的代码没被完整移除");
+}
+
+/* 游戏本体也是运行时动态插入的 <script type="module">。
+   在 file:// 下 type="module" 会被 CORS 拦掉，所以把整段 boot() 变成空操作，
+   游戏本体稍后以经典脚本的形式内联到 </body> 前。 */
+const bootRe = /function boot\(\)\s*\{[\s\S]*?document\.head\.appendChild\(s\);\s*\}/;
+assert(bootRe.test(out), "找不到动态插入游戏本体的 boot() 逻辑，index.html 结构变了");
+out = out.replace(bootRe, "function boot() { /* 游戏本体已内联，离线版不动态加载 */ }");
+
+/* 保险：这段 IIFE 里不能再残留指向 assets/ 的路径 */
+assert(
+  !/\.\/assets\//.test(out),
+  "index.html 里仍有指向 assets/ 的引用，离线版加载不到：" +
+    (out.match(/[^\s"']*\.\/assets\/[^\s"']*/) || [""])[0]
+);
 
 /* 离线没有后端可连：关掉 WebSocket，顺便关掉重复的顶部状态条 */
 out = out.replace(
@@ -104,8 +156,8 @@ out = out.replace(
 );
 assert(/enableWs:\s*false/.test(out), "没能改写 LPControllerConfig");
 
-/* 去掉四个外链脚本，换成内联 */
-for (const name of BRIDGE_SCRIPTS) {
+/* 去掉外链脚本，换成内联 */
+for (const name of inlineOrder) {
   const tag = new RegExp(`\\s*<script src="\\./bridge/${name.replace(".", "\\.")}"></script>`);
   assert(tag.test(out), `index.html 里找不到 <script src="./bridge/${name}">`);
   out = out.replace(tag, "");
@@ -113,10 +165,25 @@ for (const name of BRIDGE_SCRIPTS) {
 
 const inline = bridgeBundles.map((code) => `    <script>\n${code}\n    </script>`).join("\n");
 
+/* 样式内联到 </head> 前。index.html 原来那个动态 <link> 已经被移除，
+   所以这里必须补上，否则页面会退化成白底无样式。 */
+assert(out.includes("</head>"), "index.html 结构异常，没有 </head>");
+out = out.replace("</head>", `    <style>\n${stylesheet}\n    </style>\n  </head>`);
+assert(/<style>[\s\S]*?<\/style>/.test(out), "样式没内联成功");
+
 assert(out.includes("</body>"), "index.html 结构异常，没有 </body>");
 out = out.replace(
   "</body>",
   `${inline}\n    <script>\n${safe(gameBundle)}\n    </script>\n  </body>`
+);
+
+/* 兜底断言：所有 bridge 引用都必须已经变成内联。
+   漏一个就会在 file:// 下被 CORS 拦掉，而且不报明显错误，只是画面出不来 —— 这正是之前漏掉
+   六个脚本时的表现。构建时直接拦住，比等用户反馈"双击打不开"强。 */
+const stillExternal = bridgeScriptsInHtml(out);
+assert(
+  stillExternal.length === 0,
+  "还有 bridge 脚本没内联：" + stillExternal.join(", ")
 );
 
 fs.writeFileSync(OUT, out, "utf8");
@@ -125,5 +192,5 @@ const kb = (n) => (n / 1024).toFixed(0) + " KB";
 const leftovers = externalScriptCount(out);
 console.log("已生成 " + path.relative(ROOT, OUT));
 console.log("  大小        " + kb(Buffer.byteLength(out)));
-console.log("  内联顺序    " + BRIDGE_SCRIPTS.join(" -> ") + " -> 游戏本体");
+console.log("  内联脚本    " + inlineOrder.length + " 个：" + inlineOrder.join(" -> ") + " -> 游戏本体");
 console.log("  外链残留    " + (leftovers ? `${leftovers} 个（异常）` : "无"));

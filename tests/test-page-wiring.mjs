@@ -80,12 +80,33 @@ export default function run() {
     /* 样式：index.html 是运行时动态插入 <link> 的，离线版必须已经内联成 <style> */
     s.ok(/<style>[\s\S]*?<\/style>/.test(out), "样式已内联成 <style>（否则页面白底无样式）");
     s.ok(/enableWs:\s*false/.test(out), "离线版关掉了后端 WebSocket（没有服务器可连）");
+    /* 音频：离线版没有 bgm/ 目录可加载，构建时得把 mp3 内联成 data URI，
+       否则 bgm.js 读不到音频 —— 用户只会觉得"没声音"，想不到是资源没打进去 */
+    if (fs.existsSync(path.join(WEB, "bgm/bgm-loop.mp3"))) {
+      s.ok(/window\.LPBGM_SRC\s*=\s*"data:audio/.test(out), "背景音乐已内联成 data URI");
+      s.ok(out.indexOf("window.LPBGM_SRC") < out.indexOf("/* bridge/bgm.js */"),
+        "LPBGM_SRC 在 bgm.js 之前定义（否则读不到）");
+    }
     s.ok(out.indexOf("</script>") > 0 && out.lastIndexOf("</html>") > 0, "HTML 结构完整");
     s.ok(out.length > 500000, "游戏本体也在里面", String(out.length));
     s.ok(out.indexOf("__littlePlanetThree") > out.indexOf("/* bridge/ds5-adapter.js */"),
       "游戏本体在桥接层之后执行");
   } else {
     s.ok(false, "离线单文件版已经生成（先跑 tools/build-ds5-standalone-html.mjs）");
+  }
+
+  s.group("背景音乐");
+  s.ok(html.indexOf("./bridge/bgm.js") >= 0, "index.html 引用了 bgm.js");
+  s.ok(fs.existsSync(path.join(BRIDGE, "bgm.js")), "web/bridge/bgm.js 存在");
+  for (const f of ["bgm/bgm-loop.ogg", "bgm/bgm-loop.mp3"]) {
+    s.ok(fs.existsSync(path.join(WEB, f)), `web/${f} 存在`);
+  }
+  /* 循环音频必须是"加工过"的：源文件带结尾淡出，直接 loop 会每轮喘一口气。
+     成品时长应明显短于原片（60.7s）且接近循环点。 */
+  const oggPath = path.join(WEB, "bgm/bgm-loop.ogg");
+  if (fs.existsSync(oggPath)) {
+    const bytes = fs.readFileSync(oggPath);
+    s.ok(bytes.length > 100 * 1024, "循环音频体积正常", (bytes.length / 1024).toFixed(0) + " KB");
   }
 
   s.group("文档");

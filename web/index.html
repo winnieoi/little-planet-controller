@@ -115,5 +115,9 @@
            需要场景钩子：赛博星球页自带；原版星球请用 ?build=1（进度不丢）。
            分屏座位（?seat=N）里自动不挂载。 -->
     <script src="./bridge/tripo-build.js"></script>
+    <!-- 9) 背景音乐：无缝无限循环（web/bgm/bgm-loop.ogg，由 make-bgm-loop.mjs 生成）。
+           浏览器不让带声音自动播放，所以等第一次点击/按键才起声；
+           右上角按钮或 M 键开关，状态存 localStorage。 -->
+    <script src="./bridge/bgm.js"></script>
   </body>
 </html>

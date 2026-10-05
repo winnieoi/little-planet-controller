@@ -41,7 +41,14 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
-  ".map": "application/json; charset=utf-8"
+  ".map": "application/json; charset=utf-8",
+  ".glb": "model/gltf-binary",
+  /* 背景音乐：decodeAudioData 不看 MIME，但兜底的 <audio> 路径看 ——
+     发成 application/octet-stream 的话部分浏览器会直接不加载 */
+  ".ogg": "audio/ogg",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4"
 };
 
 /* ============================================================

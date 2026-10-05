@@ -56,6 +56,26 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
+/* ---------- 0. 背景音乐：可选地内联成 data: URI ----------
+   离线版是个单文件，没有 bgm/ 目录可加载。不内联的话 bgm.js 会静默无声
+   —— 用户只会觉得"游戏没声音"，不会知道是资源没打进去。
+   代价：mp3 约 840KB，base64 后约 1.1MB（HTML 从 ~0.7MB 涨到 ~1.8MB），
+   对一个要发给甲方双击打开的成品来说划算。--no-bgm 可以关掉。 */
+const BGM_MP3 = path.join(SRC, "bgm/bgm-loop.mp3");
+const wantBgm = !process.argv.includes("--no-bgm");
+let bgmScript = "";
+if (wantBgm && fs.existsSync(BGM_MP3)) {
+  const b64 = fs.readFileSync(BGM_MP3).toString("base64");
+  bgmScript =
+    "    <script>\n" +
+    "      /* 背景音乐（内联，离线版没有外部文件可加载）。bgm.js 会读这个变量。 */\n" +
+    '      window.LPBGM_SRC = "data:audio/mpeg;base64,' + b64 + '";\n' +
+    "    </script>";
+} else if (wantBgm) {
+  console.log("  （没有 web/bgm/bgm-loop.mp3，离线版不带音乐；" +
+    "先跑 tools/make-bgm-loop.mjs）");
+}
+
 const html = read(path.join(SRC, "index.html"));
 const appScript = read(path.join(SRC, "assets/index-CS6g4Xtd.js"));
 const threeScript = read(path.join(SRC, "assets/three-gtj_l2uB.js"));
@@ -105,10 +125,12 @@ const inlineOrder = (() => {
   return inHtml;
 })();
 
-const bridgeBundles = inlineOrder.map((name) => {
+const bridgeBlocks = inlineOrder.map((name) => {
   const file = path.join(SRC, "bridge", name);
   assert(fs.existsSync(file), `index.html 引用了 web/bridge/${name}，但文件不存在`);
-  return `/* bridge/${name} */\n${safe(read(file))}`;
+  const block = `    <script>\n/* bridge/${name} */\n${safe(read(file))}\n    </script>`;
+  /* LPBGM_SRC 必须在 bgm.js 之前定义，否则它读不到音频 */
+  return name === "bgm.js" && bgmScript ? bgmScript + "\n" + block : block;
 });
 
 /* ---------- 3. 拼 HTML ---------- */
@@ -163,7 +185,7 @@ for (const name of inlineOrder) {
   out = out.replace(tag, "");
 }
 
-const inline = bridgeBundles.map((code) => `    <script>\n${code}\n    </script>`).join("\n");
+const inline = bridgeBlocks.join("\n");
 
 /* 样式内联到 </head> 前。index.html 原来那个动态 <link> 已经被移除，
    所以这里必须补上，否则页面会退化成白底无样式。 */
@@ -194,3 +216,4 @@ console.log("已生成 " + path.relative(ROOT, OUT));
 console.log("  大小        " + kb(Buffer.byteLength(out)));
 console.log("  内联脚本    " + inlineOrder.length + " 个：" + inlineOrder.join(" -> ") + " -> 游戏本体");
 console.log("  外链残留    " + (leftovers ? `${leftovers} 个（异常）` : "无"));
+console.log("  背景音乐    " + (bgmScript ? "已内联（+ " + kb(Buffer.byteLength(bgmScript)) + "）" : "未内联"));

@@ -218,8 +218,47 @@ http://localhost:8765/bridge/duo-selftest.html
 | `?planet=cyber&day=B` | 赛博星球 · 指定白天贴图（A / B / C） |
 | `?seat=1` / `?seat=2` | 双人模式座位（由 duo.html 自动附加） |
 | `?build=1` | 打开建造模式（右上角出现「🔨 建造」入口） |
+| `?bgm=0` | 背景音乐静音开场（默认跟随上次选择） |
 
 参数可组合：`duo.html?planet=cyber` 会把星球参数转发给两个座位。
+
+---
+
+## 🎵 背景音乐（无缝无限循环）
+
+游戏自带一段赛博科幻氛围 BGM，**53.5 秒一轮、首尾无接缝**。右上角「♪ 音乐」按钮
+或按 **M 键**开关，状态记在 localStorage，下次打开保持上次选择。
+
+浏览器不允许带声音自动播放，所以**第一次点击或按键之后**才会起声 —— 这不是 bug。
+
+### 音频是怎么来的
+
+原素材是一段 60 秒的视频音轨，不能拿来直接循环，有两个坑：
+
+1. 结尾 2 秒是淡出（电平掉到 -51dB），直接 loop 会每轮"喘一口气"；
+2. 就算切掉淡出，结尾采样接到开头采样波形不连续，每轮"咔哒"一声。
+
+`tools/make-bgm-loop.mjs` 的处理：先找一个**频谱上接得上**的循环点（53.50s，
+32 频段能量指纹相似度 0.996、电平差 0.0dB），再把尾段 3 秒**等功率交叉淡化**回开头。
+成品接缝跳变 0.00134，比相邻采样的平均跳变（0.00203）还小。
+
+```bash
+node tools/make-bgm-loop.mjs ~/Desktop/spider_bgm_scifi_1min.mp4
+# -> web/bgm/bgm-loop.ogg（主用，Vorbis 天然无缝）
+# -> web/bgm/bgm-loop.mp3（兜底，不支持 ogg 的浏览器）
+```
+
+可选参数：`--at 53.5` 指定循环点、`--fade 3` 淡化长度、`--start 0.35` 起点、`--out <前缀>`。
+
+> 挑循环点时**不要用波形互相关**：氛围电子乐的典型情况是"包络循环、音符不重复"，
+> 波形相关普遍只有 0.2 左右，根本找不到采样级完美接点。要看频谱相似度。
+
+### 播放实现
+
+优先走 Web Audio：整个文件解码成 `AudioBuffer` 后用 `BufferSource.loop` 循环 ——
+采样级精确，不会因解码器补零在接缝处咯噔一下。拿不到 `AudioBuffer` 才退到
+`<audio loop>`。离线单文件版没有 `bgm/` 目录可加载，构建时把音频以 data URI
+写进 `window.LPBGM_SRC`，`file://` 下同样有音乐。
 
 ---
 
@@ -323,12 +362,16 @@ little-planet-controller/
 │   │   ├── day-night.js          昼夜切换按钮（单人页右上角，按星球分流）
 │   │   ├── planet-switch.js      星球切换按钮（原版 ↔ 赛博星球）
 │   │   ├── tripo-build.js        建造工坊（构造器反推 + GLB 解析 + 球面摆放 + 积分/存档）
+│   │   ├── bgm.js                背景音乐（Web Audio 采样级循环 + 开关按钮 + M 键）
 │   │   ├── ds5-selftest.html     手柄适配自检页，39 项断言
 │   │   └── duo-selftest.html     双人分屏自检页，52 项断言
 │   ├── integration/              赛博星球集成层（游戏本体零改动）
 │   │   ├── cyber-planet.js       隐藏原地表 + 加载 GLB 模型（esbuild 打包版）
 │   │   ├── cyber-planet-source.js 集成层源码（175 行，注释完整）
 │   │   └── daylight-mode.js      赛博星球运行时昼夜切换（贴图/灯光/天空/雾）
+│   ├── bgm/
+│   │   ├── bgm-loop.ogg          背景音乐主用（53.5s 无缝循环，Vorbis）
+│   │   └── bgm-loop.mp3          兜底（不支持 ogg 的浏览器）
 │   ├── models/
 │   │   └── cyber-planet.glb      赛博星球高精度模型（约 57MB，100 万顶点）
 │   ├── textures/                 赛博星球白天贴图（A / B / C 三套日光色）
@@ -349,6 +392,7 @@ little-planet-controller/
 │   ├── gen-day-assets.py         白天版资源生成脚本（映射规则可复现）
 │   ├── add-lp-hook.mjs           给打包产物注入场景钩子（生成建造模式副本）
 │   ├── make-perf-model.mjs       生成高面数压测 GLB
+│   ├── make-bgm-loop.mjs         从视频音轨加工出无缝循环 BGM（找循环点 + 交叉淡化）
 │   ├── fit-planet.mjs            离线算模型-星球贴合参数
 │   ├── fixtures/                 测试夹具 GLB（带贴图 / 真实 Tripo 子集 / 压测）
 │   ├── build-ds5-standalone-html.mjs 离线单文件版打包脚本

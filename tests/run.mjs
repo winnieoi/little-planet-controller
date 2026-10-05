@@ -6,12 +6,15 @@ import testReport from "./test-dualsense-report.mjs";
 import testLpDualsense from "./test-lp-dualsense.mjs";
 import testAdapter from "./test-ds5-adapter.mjs";
 import testPage from "./test-page-wiring.mjs";
+import testTripoCache from "./test-tripo-cache.mjs";
 
 const suites = [
   ["test-dualsense-report", testReport],
   ["test-lp-dualsense", testLpDualsense],
   ["test-ds5-adapter", testAdapter],
-  ["test-page-wiring", testPage]
+  ["test-page-wiring", testPage],
+  /* 这一套会真起一个服务器（隔离目录 + mock 模式），比其余几套慢，放最后跑 */
+  ["test-tripo-cache", testTripoCache]
 ];
 
 let pass = 0;

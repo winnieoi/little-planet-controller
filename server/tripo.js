@@ -418,6 +418,9 @@ async function readIndex() {
       const rebuilt = [];
       for (const f of files) {
         if (!f.endsWith(".glb")) continue;
+        /* mock_ 开头是 mock 模式的中间产物（任务自己那份），不是玩家造出来的建筑，
+           扫目录重建索引时要跳过，否则建筑列表里会冒出一条空描述的重影 */
+        if (f.startsWith("mock_")) continue;
         const stat = await fsp.stat(path.join(OUT_DIR, f));
         rebuilt.push({ file: f, prompt: "", createdAt: stat.mtimeMs, size: stat.size });
       }
@@ -461,10 +464,12 @@ async function saveTaskModel(taskId, prompt) {
   if (buffer.readUInt32LE(0) !== 0x46546c67) throw new Error("下载到的不是 GLB 文件");
 
   await fsp.mkdir(OUT_DIR, { recursive: true });
+  /* 先读索引再落盘。顺序反了会出问题：首次运行时 index.json 还不存在，
+     readIndex() 会去扫目录重建，那时新文件已经在目录里了，就会被当成一条
+     prompt 为空的桩记录收进去 —— 同一个文件在索引里出现两次。 */
+  const list = await readIndex();
   const file = safeFile("b" + Date.now().toString(36) + "_" + crypto.randomBytes(2).toString("hex")) + ".glb";
   await fsp.writeFile(path.join(OUT_DIR, file), buffer);
-
-  const list = await readIndex();
   const entry = {
     file,
     prompt: String(prompt || "").slice(0, 200),

@@ -10,7 +10,7 @@
 ## 快速开始（Windows）
 
 ```bash
-cd little-planet-controller
+cd pocket-planet-roam
 node server/server.js
 ```
 

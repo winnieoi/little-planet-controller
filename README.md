@@ -1,4 +1,8 @@
-# 口袋星球 · 双人合作版（Little Planet Controller）
+# 口袋星球：漫游
+
+> Pocket Planet: Roam — 一款赛博朋克风格的低多边形 3D 探索游戏。
+> 基于《口袋星球》游戏本体做的一层桥接工程：**不改动游戏本体一行代码**，
+> 给它加上双手柄、双人分屏、背景音乐与 AI 建造工坊。
 
 《口袋星球》是一款赛博朋克风格的低多边形 3D 探索游戏：漫步霓虹草原、工业绿洲与珊瑚礁，
 收集散落全岛的 7 个数字奇迹。本仓库在**不改动游戏本体一行代码**的前提下，给它套上了
@@ -43,7 +47,7 @@
 **方式二：命令行**
 
 ```bash
-cd little-planet-controller
+cd pocket-planet-roam
 node server/server.js
 ```
 
@@ -360,7 +364,7 @@ python3 server/example_python.py          # 手动发指令
 ## 文件结构
 
 ```
-little-planet-controller/
+pocket-planet-roam/
 ├── README.md                     本文件
 ├── start.command                 macOS 双击一键启动
 ├── start.bat                     Windows 双击一键启动

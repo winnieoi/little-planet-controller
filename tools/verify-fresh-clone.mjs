@@ -19,7 +19,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const REPO = process.env.CLONE_REPO || "https://github.com/winnieoi/little-planet-controller.git";
+const REPO = process.env.CLONE_REPO || "https://github.com/winnieoi/pocket-planet-roam.git";
 const NODE = process.execPath;
 const PORT = Number(process.env.CLONE_PORT || 8807);
 const DIR = process.env.CLONE_DIR || path.join(mkdtempSync(path.join(tmpdir(), "lp-clone-")), "repo");

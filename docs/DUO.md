@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-cd little-planet-controller
+cd pocket-planet-roam
 node server/server.js
 ```
 

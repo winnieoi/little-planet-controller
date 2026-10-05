@@ -401,7 +401,8 @@ LPBuild.placeFromUrl('/models/buildings/xxx.glb', 4)  // 直接摆本地 GLB
 | `tools/fixtures/` | 测试夹具：`test-textured`（带贴图）、`test-real-tripo`（真实 Tripo 输出子集）、`perf-8000`（压测） |
 | `web/models/buildings/` | 生成出来的建筑 GLB（运行时数据，不是源码） |
 | `tests/test-tripo-cache.mjs` | 缓存测试（35 项），起隔离服务器但不开浏览器 |
-| `tools/verify-build-e2e.mjs` | 端到端验证（15 项），真开 Chrome 走完整链路 |
+| `tools/verify-build-e2e.mjs` | 端到端验证（19 项），真开 Chrome 走完整链路 |
+| `tools/verify-fresh-clone.mjs` | 全新克隆冒烟测试（17 项），拉干净副本验证「clone 下来就能跑」 |
 
 ### 环境变量
 

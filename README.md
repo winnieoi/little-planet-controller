@@ -246,12 +246,17 @@ TRIPO_API_KEY=tsk_xxxxxxxx node server/server.js   # 接真实 Tripo 3D 生成
 node server/server.js                              # 不配 Key → mock 模式
 ```
 
-**自己动手验一遍**（两个脚本都用隔离目录 + 强制 mock，不会真扣费）：
+**自己动手验一遍**（三个脚本都用隔离目录 + 强制 mock，不会真扣费）：
 
 ```bash
 node tests/run.mjs                 # 全套 220 项，含缓存 35 项
 node tools/verify-build-e2e.mjs    # 真开 Chrome：收集 → 生成 → 摆上星球 → 刷新恢复
+node tools/verify-fresh-clone.mjs  # 从 GitHub 拉干净副本，验证「clone 下来就能跑」
 ```
+
+第三个值得单独说：本地工作区里躺着已生成的建筑和一堆未入库的产物，
+很容易掩盖「某个必需文件其实被 gitignore 掉了」这类问题。它会真的克隆一份到临时目录，
+按上面的步骤走一遍全套，再起服务器真的生成一个模型取回来。
 
 ![建造工坊实际效果](docs/tripo-village.png)
 
@@ -349,6 +354,7 @@ little-planet-controller/
 │   ├── build-ds5-standalone-html.mjs 离线单文件版打包脚本
 │   ├── verify-ds5-hardware.mjs   DS5 硬件输出验证脚本
 │   ├── verify-build-e2e.mjs      建造工坊端到端验证（真开 Chrome）
+│   ├── verify-fresh-clone.mjs    全新克隆冒烟测试（拉干净副本跑一遍）
 │   └── record-demo.mjs           录演示视频（Chrome headless + CDP 逐帧抓）
 ├── tests/                        自动化测试（node tests/run.mjs，220 项）
 └── docs/

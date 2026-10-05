@@ -30,6 +30,19 @@
 | 🪐 **单人 · 赛博星球** | [打开](https://duoduozhang288-crypto.github.io/little-planet-controller/?planet=cyber) |
 | 👥 双人 · 赛博星球 | [打开](https://duoduozhang288-crypto.github.io/little-planet-controller/duo.html?planet=cyber) |
 
+### 本仓库实例的在线部署
+
+**👉 https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host**
+
+| 页面 | 地址 |
+| --- | --- |
+| 🪐 单人 · 建造模式 | [打开](https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host/?build=1) |
+| 👥 双人分屏 | [打开](https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host/duo.html) |
+
+跑的是本仓库的 Node 服务器（`node server/server.js`），所以建造工坊的
+Tripo 接口、WebSocket 输入注入这些后端能力在线上同样可用；上面那组
+GitHub Pages 是纯静态托管，只有游戏本身。
+
 > 首次进入赛博星球需要下载约 57MB 的高精度模型，加载时有进度遮罩，之后浏览器会缓存。
 > 在线版手柄适配（WebHID）需要 Chrome / Edge 浏览器；键鼠在所有现代浏览器可用。
 

@@ -385,8 +385,47 @@
     }
   }
 
+  /* 有没有后端，探测结果缓存起来（null = 还没探过）。
+     静态托管（GitHub Pages、对象存储这类）只有静态文件，没有 /ws 端点：
+     直接连会在控制台刷一条 WebSocket failed，接着按重连间隔无限重试，
+     日志全是这种噪音，还会让人误以为页面坏了。所以先确认后端在不在。 */
+  var backendProbe = null;
+  var pendingProbe = null;
+
+  function probeBackendOnce() {
+    if (backendProbe !== null) return Promise.resolve(backendProbe);
+    if (pendingProbe) return pendingProbe;
+    if (typeof fetch !== "function" || location.protocol === "file:") {
+      backendProbe = false;
+      return Promise.resolve(false);
+    }
+    pendingProbe = fetch("/api/tripo/config", { cache: "no-store" })
+      .then(function (res) {
+        var ct = (res.headers.get("content-type") || "").toLowerCase();
+        /* 静态托管的 404 给的是一页 HTML —— 状态码不对或不是 JSON 都算没后端 */
+        backendProbe = res.ok && ct.indexOf("json") >= 0;
+        return backendProbe;
+      })
+      .catch(function () {
+        backendProbe = false;
+        return false;
+      })
+      .then(function (v) {
+        pendingProbe = null;
+        return v;
+      });
+    return pendingProbe;
+  }
+
   function connect() {
     if (!cfg.enableWs || typeof WebSocket === "undefined") return;
+    if (backendProbe === null) {
+      probeBackendOnce().then(function (has) {
+        if (has) connect();
+      });
+      return;
+    }
+    if (!backendProbe) return;
     var url = resolveWsUrl();
     try {
       socket = new WebSocket(url);

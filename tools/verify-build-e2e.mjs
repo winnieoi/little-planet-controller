@@ -215,7 +215,53 @@ try {
   const creditsAfter = await ev(`LPBuild.status().credits`);
   check(creditsAfter === 30, "积分也保留为 30", String(creditsAfter));
 
+  /* 右上角按钮排的布局。这里放过一次真 bug ——
+     planet-toggle / tripo-build-btn / bgm-toggle 各自都带 position:absolute
+     （给"没容器时独立摆放"用的），进了 flex 容器没被重置，全部脱离文档流
+     叠在容器右下角互相压住；而建造面板一打开，又把最右边三个整个盖掉，
+     等于建造模式下音乐按钮根本点不到。两处都是纯视觉的，功能测试全绿也发现不了。 */
+  console.log("\n[右上角按钮排]");
+  const measure = `(function(){
+    var wrap=document.getElementById('duo-entry-wrap');
+    var panel=document.getElementById('tripo-panel');
+    var kids=[].slice.call(wrap.children).map(function(c){return c.getBoundingClientRect();});
+    var pr=panel.getBoundingClientRect();
+    var open=panel.classList.contains('is-open');
+    var overlaps=0, hidden=0, offscreen=0;
+    for(var i=0;i<kids.length;i++)for(var j=i+1;j<kids.length;j++){
+      var a=kids[i],b=kids[j];
+      if(a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom)overlaps++;
+    }
+    if(open) kids.forEach(function(k){ if(k.right>pr.left&&k.left<pr.right)hidden++; });
+    kids.forEach(function(k){ if(k.left<0||k.right>window.innerWidth)offscreen++; });
+    return {n:kids.length, overlaps:overlaps, hidden:hidden, offscreen:offscreen,
+            open:open, cls:document.documentElement.className,
+            ids:[].slice.call(wrap.children).map(function(c){return c.id;})};
+  })()`;
+
+  const off = await ev(measure);
+  check(off.n >= 5, "右上角按钮齐全（双人/昼夜/星球/建造/音乐）", JSON.stringify(off.ids));
+  check(off.overlaps === 0, "面板关闭时按钮互不重叠", "重叠 " + off.overlaps + " 对");
+  check(off.offscreen === 0, "面板关闭时按钮都在屏幕内");
+
+  await ev(`document.getElementById('tripo-build-btn').click()`);
+  await sleep(600);
+  const on = await ev(measure);
+  check(on.open === true, "点「建造」后面板打开了");
+  check(/lp-panel-open/.test(on.cls), "面板打开时挂上了让位状态类", on.cls);
+  check(on.overlaps === 0, "面板打开时按钮互不重叠", "重叠 " + on.overlaps + " 对");
+  check(on.hidden === 0, "面板打开时没有按钮被面板盖住", "被盖 " + on.hidden + " 个");
+  check(on.offscreen === 0, "面板打开时按钮仍在屏幕内（窄屏会换行，不会跑出去）");
+
+  await ev(`document.querySelector('#tripo-panel .tp-close').click()`);
+  await sleep(600);
+  const back = await ev(measure);
+  check(back.open === false && !/lp-panel-open/.test(back.cls), "关闭面板后状态类已摘掉", back.cls);
+  check(Math.abs(back.offscreen) === 0 && back.overlaps === 0, "关闭后布局回到原位且无重叠");
+
   /* 留个截图当证据 */
+  await ev(`document.getElementById('tripo-build-btn').click()`);
+  await sleep(500);
   const shot = await ps("Page.captureScreenshot", { format: "png" });
   fs.writeFileSync(SHOT, Buffer.from(shot.result.data, "base64"));
   console.log(`\n截图: ${SHOT}`);

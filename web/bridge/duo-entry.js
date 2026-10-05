@@ -34,8 +34,20 @@
   var css = [
     /* 容器：flex 横排，按钮共用一套玻璃样式 */
     "#duo-entry-wrap{position:absolute;top:66px;right:36px;z-index:40;",
-    "display:flex;align-items:center;gap:8px;}",
+    /* flex-wrap + justify-content:flex-end：窄屏放不下时整排往下折行、右对齐，
+       不要横向溢出到屏幕外（按钮 flex:none 之后就不再自己缩了） */
+    "display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;}",
+    /* position:static 是必需的，不是保险：后面几个桥接脚本（planet-switch、
+       tripo-build、bgm）画出来的按钮都自带 position:absolute + top/right，
+       那是给"没有容器时独立摆放"用的。进了容器不重置的话，它们脱离 flex 流，
+       全部叠在容器右下角互相压住（实测 #planet-toggle 与 #tripo-build-btn
+       重叠在 y=132 那一行）。这里的选择器带了 id + 元素名，比它们各自的
+       #id 选择器多一个元素权重，所以不论样式表先后都能压住。 */
     "#duo-entry-wrap > a,#duo-entry-wrap > button{",
+    "position:static;right:auto;top:auto;",
+    /* flex:none + nowrap：窄屏放不下时整块换行，不要压缩按钮
+       —— 否则「白天」会被拆成「白/天」两行、按钮高度参差不齐 */
+    "flex:none;white-space:nowrap;",
     "display:inline-flex;align-items:center;gap:6px;",
     "font:inherit;font-size:12px;letter-spacing:.5px;cursor:pointer;",
     "color:var(--muted);background:var(--glass);",
@@ -45,7 +57,16 @@
     "transition:color .2s,border-color .2s;}",
     "#duo-entry-wrap > a:hover,#duo-entry-wrap > button:hover{",
     "color:var(--accent);border-color:var(--accent);}",
-    /* day-night 的按钮原本是独立绝对定位；进了容器就交给 flex */
+    /* 让开游戏自己的「小小奇迹」胶囊（aside.journal-pill）。
+       胶囊是水平居中的，视口一窄就向右压进按钮排的地盘 —— 实测 560~1024px
+       都有重叠（到 1280px 才错开），不是只有手机。胶囊的纵向位置在 760px
+       处从 y77-129 变成 y28-80，所以这里分两档跟着往下让。
+       档位不是拍脑袋：按钮排宽 436px、右距 36px，胶囊宽 188px 且居中，
+       两者在 top 相同的情况下要 视口 ≥ 1132px 才错得开（实测 1100 仍压着 16px）。
+       取 1200 留点余量给字号/字体差异。 */
+    "@media (max-width:1199px){#duo-entry-wrap{top:92px;}}",
+    "@media (max-width:759px){#duo-entry-wrap{top:140px;}}",
+    /* day-night 的按钮原本是独立绝对定位；进了容器就交给 flex（上面已通用处理，这里留个明确记录） */
     "#duo-entry-wrap > button#day-night-toggle{position:static;right:auto;top:auto;}",
     /* 入口按钮稍微强调一点，让人一眼看见 */
     "#duo-entry-link{color:var(--accent);border-color:var(--line);}",

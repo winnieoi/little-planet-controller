@@ -24,7 +24,21 @@
   "use strict";
 
   var params = new URLSearchParams(location.search);
-  if (params.get("seat")) return; /* 座位侧交给宿主页 */
+
+  /* 三种角色：
+     单人页  —— 自己放音、自己画按钮（默认）
+     音乐座位（?seat=N&music=1）—— 只有它放音。为什么必须放在 iframe 里：
+       用户手势是按文档算的，在 iframe 里点游戏区域，宿主页拿不到这次手势，
+       宿主调的 AudioContext.resume() 会被自动播放策略一直卡在 suspended。
+       实测：点宿主顶栏 → ctx 变 running；点座位内部 → 宿主仍 suspended。
+       所以想让"点一下游戏就响"，声音必须由座位自己放。
+     宿主页（window.LPBGM_REMOTE，duo.html）—— 不放音，只当遥控器：
+       分屏里两个座位同时响会变双重奏，所以只指定座位 1 出声。 */
+  var seat = params.get("seat");
+  var REMOTE = !!window.LPBGM_REMOTE;
+  var isMusicSeat = !!seat && params.get("music") === "1";
+  var silentSeat = !!seat && !isMusicSeat;
+  if (silentSeat) return; /* 非音乐座位：完全不碰 BGM */
 
   var OGG = "./bgm/bgm-loop.ogg";
   var MP3 = "./bgm/bgm-loop.mp3";
@@ -145,6 +159,13 @@
   }
 
   function applyMute() {
+    if (REMOTE) {
+      /* 宿主页：自己不出声，把状态写进 localStorage 并通知座位执行 */
+      try { localStorage.setItem(STORE_MUTED, muted ? "1" : "0"); } catch (e) {}
+      broadcast();
+      paint();
+      return;
+    }
     if (gain) {
       gain.gain.cancelScheduledValues(now());
       gain.gain.setValueAtTime(gain.gain.value, now());
@@ -161,10 +182,51 @@
     paint();
   }
 
-  /* ---------- 按钮 ---------- */
-  var btn = document.createElement("button");
+  /* ---------- 宿主页 ↔ 座位页 ---------- */
+  function seatFrames() {
+    return ["duo-seat-1", "duo-seat-2"]
+      .map(function (n) { return window.frames[n]; })
+      .filter(Boolean);
+  }
+  function broadcast() {
+    if (!REMOTE) return;
+    seatFrames().forEach(function (f) {
+      try { f.postMessage({ type: "lp-bgm", cmd: "mute", muted: muted }, "*"); } catch (e) {}
+    });
+  }
+  function report() {
+    if (!seat || REMOTE) return; /* 只有座位往上报 */
+    try {
+      window.parent.postMessage(
+        { type: "lp-bgm-state", seat: seat, muted: muted, playing: started }, "*"
+      );
+    } catch (e) {}
+  }
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || typeof d !== "object") return;
+    if (d.type === "lp-bgm" && !REMOTE && seat) {
+      muted = !!d.muted;
+      applyMute();
+      return;
+    }
+    if (d.type === "lp-bgm-state" && REMOTE) {
+      /* 座位那边按了 M 键之类，宿主按钮跟着更新 */
+      muted = !!d.muted;
+      try { localStorage.setItem(STORE_MUTED, muted ? "1" : "0"); } catch (err) {}
+      paint();
+    }
+  });
+
+  /* ---------- 按钮 ----------
+     页面自己已经有 #bgm-toggle 时直接接管（duo.html 的宿主工具栏就是这么用的：
+     分屏是两个 iframe，音乐只能由宿主页放一份，两个座位里都放会变成双重奏）。 */
+  var existing = document.getElementById("bgm-toggle");
+  var btn = existing || document.createElement("button");
   btn.type = "button";
   btn.id = "bgm-toggle";
+  /* 音乐座位不画按钮：分屏里的按钮由宿主页统一提供，两个座位各画一个会重复 */
+  var ownButton = !existing && !seat;
 
   function paint() {
     var on = !muted;
@@ -187,29 +249,33 @@
     if (e.key === "m" || e.key === "M") { muted = !muted; applyMute(); }
   });
 
-  var style = document.createElement("style");
-  style.textContent = [
-    "#bgm-toggle{position:absolute;top:66px;right:36px;z-index:40;",
-    "display:inline-flex;align-items:center;gap:6px;",
-    "font:inherit;font-size:12px;letter-spacing:.5px;cursor:pointer;",
-    "color:var(--muted);background:var(--glass);",
-    "border:1px solid var(--line);border-radius:9px;padding:7px 12px;",
-    "-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);",
-    "transition:color .2s,border-color .2s;}",
-    "#bgm-toggle:hover{color:var(--accent);border-color:var(--accent);}",
-    /* 进了双人入口的容器就交给 flex 排，别再各自绝对定位 */
-    "#duo-entry-wrap > button#bgm-toggle{position:static;right:auto;top:auto;}",
-  ].join("");
-  document.head.appendChild(style);
-
   function mount() {
+    if (!ownButton) return; /* 复用页面自己的按钮，位置由那个页面决定 */
     var wrap = document.getElementById("duo-entry-wrap");
     if (wrap) { wrap.appendChild(btn); return; }
     var app = document.getElementById("app") || document.body;
     app.appendChild(btn);
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
-  else mount();
+
+  if (ownButton) {
+    var style = document.createElement("style");
+    style.textContent = [
+      "#bgm-toggle{position:absolute;top:66px;right:36px;z-index:40;",
+      "display:inline-flex;align-items:center;gap:6px;",
+      "font:inherit;font-size:12px;letter-spacing:.5px;cursor:pointer;",
+      "color:var(--muted);background:var(--glass);",
+      "border:1px solid var(--line);border-radius:9px;padding:7px 12px;",
+      "-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);",
+      "transition:color .2s,border-color .2s;}",
+      "#bgm-toggle:hover{color:var(--accent);border-color:var(--accent);}",
+      /* 进了双人入口的容器就交给 flex 排，别再各自绝对定位 */
+      "#duo-entry-wrap > button#bgm-toggle{position:static;right:auto;top:auto;}",
+    ].join("");
+    document.head.appendChild(style);
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
+    else mount();
+  }
 
   /* ---------- 自动播放策略：等第一次交互 ---------- */
   function kick() {
@@ -257,5 +323,14 @@
     },
   };
 
-  if (!muted) load();
+  if (REMOTE) {
+    /* 宿主页：等座位上报状态，顺便确认一下座位在不在（它们可能还没加载完） */
+    setTimeout(broadcast, 1200);
+    setTimeout(broadcast, 3000);
+  } else if (!muted) {
+    load();
+  }
+  report();
+  /* 座位真正开始播之后，把状态同步给宿主（宿主按钮的文案要跟上） */
+  setInterval(report, 3000);
 })();

@@ -181,6 +181,7 @@
         <a href="./" id="btn-solo" title="回到单人模式">单人模式</a>
         <button id="btn-planet" title="切换星球（两个画面同时切换，进度不丢）">🪐 赛博星球</button>
         <button id="btn-theme" title="两个画面同时切换昼夜（重载画面，进度不丢）">☀️ 白天</button>
+        <button id="bgm-toggle" title="背景音乐开关（快捷键 M）">♪ 音乐</button>
         <button id="btn-layout">上下布局</button>
         <button id="btn-help">操作说明</button>
       </div>
@@ -229,6 +230,13 @@
 
     <script src="./bridge/duo-modes.js"></script>
     <script src="./bridge/duo-pads.js"></script>
+    <!-- 背景音乐。分屏的坑：用户手势是按文档算的，点 iframe 里的游戏区域，
+         宿主页拿不到这次手势，宿主调的 AudioContext.resume() 会被自动播放策略
+         一直卡住（实测：点宿主顶栏 → running；点座位内部 → 仍 suspended）。
+         所以声音只能由座位自己放，而且只能指定一个座位放，否则双重奏。
+         宿主页在这里只当遥控器：不放音，只负责工具栏按钮 ↔ 座位之间的同步。 -->
+    <script>window.LPBGM_REMOTE = true;</script>
+    <script src="./bridge/bgm.js"></script>
     <script>
       (function () {
         "use strict";
@@ -251,7 +259,9 @@
         var cyber = hostParams.get("planet") === "cyber";
         var themeParam = day ? "&theme=day" : "";
         var planetParam = cyber ? "&planet=cyber" : "";
-        frame1.src = "./index.html?seat=1" + themeParam + planetParam;
+        /* music=1 只给座位 1：座位的点击/按键算它自己的用户手势，声音必须由
+           "拿得到手势的那个文档"来放（见下面 bgm.js 里那段注释）。 */
+        frame1.src = "./index.html?seat=1&music=1" + themeParam + planetParam;
         frame2.src = "./index.html?seat=2" + themeParam + planetParam;
         var btnTheme = document.getElementById("btn-theme");
         var btnPlanet = document.getElementById("btn-planet");

@@ -724,6 +724,17 @@
       "-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);",
       "transition:color .2s,border-color .2s;}",
       "#tripo-build-btn:hover{color:var(--accent);border-color:var(--accent);}",
+      /* 面板是固定 320px 宽的右侧栏、z-index 120，而右上角那排全局按钮
+         （双人/昼夜/星球/建造/音乐）是 z-index 40 —— 不让开的话最右边几个
+         会被整个盖住，等于面板一开就点不到它们。开着面板时把整排左移一个
+         面板宽度。min(320px,86vw) 跟面板自己的 max-width 对齐，窄屏也不会跑出屏幕。 */
+      "html.lp-panel-open #duo-entry-wrap{right:calc(min(320px,86vw) + 14px);",
+      "max-width:calc(100vw - min(320px,86vw) - 28px);flex-wrap:wrap;justify-content:flex-end;}",
+      "#duo-entry-wrap{transition:right .22s ease;}",
+      /* 窄屏例外：面板自己就占了 320px（420px 屏上是 76%），让位后按钮排只剩
+         不到 80px 宽，会被挤成一竖条。这种情况不如干脆收起来 —— 面板有关闭按钮，
+         关掉按钮排就回来了。 */
+      "@media (max-width:799px){html.lp-panel-open #duo-entry-wrap{display:none;}}",
       "#tripo-panel{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:86vw;z-index:120;",
       "display:none;flex-direction:column;gap:12px;padding:18px 16px;overflow:auto;",
       "background:rgba(10,2,22,.9);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);",
@@ -766,6 +777,7 @@
     btn.title = "用收集到的积分生成建筑";
     btn.addEventListener("click", function () {
       el.panel.classList.toggle("is-open");
+      syncPanelState();
     });
 
     var panel = document.createElement("aside");
@@ -786,7 +798,18 @@
 
     panel.querySelector(".tp-close").addEventListener("click", function () {
       panel.classList.remove("is-open");
+      syncPanelState();
     });
+
+    /* 面板开合时要通知按钮排让位（见上面 html.lp-panel-open 的样式）。
+       放在 <html> 上而不是 <body>：样式表里用 html.lp-panel-open 作前缀，
+       body 上的类名在极早期（body 还没解析完）会挂空。 */
+    function syncPanelState() {
+      document.documentElement.classList.toggle(
+        "lp-panel-open",
+        el.panel.classList.contains("is-open")
+      );
+    }
 
     el = {
       btn: btn,

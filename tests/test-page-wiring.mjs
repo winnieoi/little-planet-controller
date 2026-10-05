@@ -109,6 +109,23 @@ export default function run() {
     s.ok(bytes.length > 100 * 1024, "循环音频体积正常", (bytes.length / 1024).toFixed(0) + " KB");
   }
 
+  s.group("双人分屏的背景音乐");
+  /* 分屏里音乐只能由座位自己放（用户在 iframe 里的点击算 iframe 自己的用户手势，
+     宿主页拿不到，宿主调的 AudioContext.resume() 会被自动播放策略卡死）。
+     而且只能指定一个座位放，两个都放就成双重奏。这几条是那套分红的接线检查。 */
+  const duoPath = path.join(WEB, "duo.html");
+  if (fs.existsSync(duoPath)) {
+    const duo = fs.readFileSync(duoPath, "utf8");
+    s.ok(duo.indexOf('id="bgm-toggle"') >= 0, "宿主工具栏里有音乐按钮");
+    s.ok(/window\.LPBGM_REMOTE\s*=\s*true/.test(duo), "宿主页声明自己是遥控器（不放音）");
+    s.ok(/window\.LPBGM_REMOTE\s*=\s*true[^]*?bridge\/bgm\.js/.test(duo),
+      "LPBGM_REMOTE 声明在 bgm.js 之前（否则宿主会自己放音）");
+    s.ok(/seat=1&music=1/.test(duo), "座位 1 被指定为音乐座位");
+    s.ok(!/seat=2&music=1/.test(duo), "座位 2 不是音乐座位（避免双重奏）");
+  } else {
+    s.ok(false, "web/duo.html 存在");
+  }
+
   s.group("文档");
   for (const f of ["docs/DS5.md", "README.md"]) {
     s.ok(fs.existsSync(path.join(ROOT, f)), `${f} 存在`);

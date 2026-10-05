@@ -555,10 +555,34 @@
     return location.protocol === "file:";
   }
 
+  /* GitHub Pages 这类纯静态托管上没有 Node 后端。麻烦在于它的 404 会返回一页
+     HTML（状态码 404、content-type text/html），fetch 不会 reject，错误只在
+     res.json() 那一环炸出来，玩家看到的是"响应不是 JSON" 这种莫名其妙的话。
+     所以提前单独探一次：看响应是不是 JSON，不是就断定没有后端。 */
+  var backendMissing = false;
+  var STATIC_MSG =
+    "当前是纯静态托管（GitHub Pages 等），没有 Node 后端，生成功能不可用。"
+    + "要在线生成的話得部署到带 Node 运行时的平台，或在本地用 start.command 启动。";
+
+  async function probeBackend() {
+    if (isOffline()) {
+      backendMissing = true;
+      return;
+    }
+    try {
+      var res = await fetch("/api/tripo/config");
+      var ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (!res.ok || ct.indexOf("json") < 0) backendMissing = true;
+    } catch (e) {
+      backendMissing = true;
+    }
+  }
+
   async function api(path, opts) {
     if (isOffline()) {
       throw new Error("建造工坊需要后端服务，离线单文件版用不了。请用 start.command 启动后打开 http://localhost:8765/?build=1");
     }
+    if (backendMissing) throw new Error(STATIC_MSG);
     var res = await fetch(path, opts);
     var data = await res.json().catch(function () { return { ok: false, error: "响应不是 JSON" }; });
     if (!res.ok || data.ok === false) throw new Error(data.error || ("HTTP " + res.status));
@@ -894,6 +918,7 @@
     if (new URLSearchParams(location.search).get("seat")) return;
 
     buildUI();
+    await probeBackend();
 
     try {
       var cfg = await api("/api/tripo/config");
@@ -921,7 +946,9 @@
       if (el.mode) {
         el.mode.textContent = isOffline()
           ? "离线版无法生成建筑（没有后端）。用 start.command 启动后访问 localhost:8765/?build=1"
-          : "取不到服务端配置：" + e.message;
+          : backendMissing
+            ? STATIC_MSG
+            : "取不到服务端配置：" + e.message;
       }
     }
 

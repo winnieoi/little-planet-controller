@@ -30,18 +30,42 @@
 | 🪐 **单人 · 赛博星球** | [打开](https://duoduozhang288-crypto.github.io/little-planet-controller/?planet=cyber) |
 | 👥 双人 · 赛博星球 | [打开](https://duoduozhang288-crypto.github.io/little-planet-controller/duo.html?planet=cyber) |
 
-### 本仓库实例的在线部署
+### 本仓库的在线站点（GitHub Pages）
 
-**👉 https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host**
+**👉 https://winnieoi.github.io/pocket-planet-roam/**
 
 | 页面 | 地址 |
 | --- | --- |
-| 🪐 单人 · 建造模式 | [打开](https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host/?build=1) |
-| 👥 双人分屏 | [打开](https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host/duo.html) |
+| 🪐 单人 · 建造模式 | [打开](https://winnieoi.github.io/pocket-planet-roam/?build=1) |
+| 👥 双人分屏 | [打开](https://winnieoi.github.io/pocket-planet-roam/duo.html) |
 
-跑的是本仓库的 Node 服务器（`node server/server.js`），所以建造工坊的
-Tripo 接口、WebSocket 输入注入这些后端能力在线上同样可用；上面那组
-GitHub Pages 是纯静态托管，只有游戏本身。
+跑在 `gh-pages` 分支，更新用一条命令重新发布：
+
+```bash
+node tools/publish-gh-pages.mjs
+```
+
+> **静态托管没有 Node 后端**，所以建造工坊的「文字生成建筑」在线上不可用，
+> 面板会直接写明原因，而不是报一句看不懂的错。要在线生成就得用下面那个带后端的版本。
+
+#### 绑定自己的域名
+
+GitHub Pages 原生支持自定义域名（含免费 HTTPS 证书），三步：
+
+1. 域名 DNS 里加一条记录：`CNAME` → `winnieoi.github.io`（子域用 CNAME，根域建议用 ALIAS/ANAME）
+2. 仓库 **Settings → Pages → Custom domain** 填上你的域名；或者发布时直接带参数，
+   脚本会把域名写进 `CNAME` 文件：
+   ```bash
+   node tools/publish-gh-pages.mjs --domain play.example.com
+   ```
+3. 勾上 **Enforce HTTPS**，等 GitHub 签发证书（通常几分钟）
+
+#### 带后端的版本
+
+**https://0f80082e16b340e6833ddfc6f4558c0e.app.workbuddy.host**
+
+跑的是本仓库的 Node 服务器（`node server/server.js`），建造工坊的 Tripo 接口、
+WebSocket 输入注入在这些能力在线上才有 —— 但它的域名是随机生成的，改不了。
 
 > 首次进入赛博星球需要下载约 57MB 的高精度模型，加载时有进度遮罩，之后浏览器会缓存。
 > 在线版手柄适配（WebHID）需要 Chrome / Edge 浏览器；键鼠在所有现代浏览器可用。

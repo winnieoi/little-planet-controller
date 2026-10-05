@@ -110,6 +110,30 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+/* 取一个已生成的建筑模型。只认文件名，天然挡掉 ../ 这类目录穿越。 */
+function serveBuilding(req, res, pathname) {
+  const name = path.basename(decodeURIComponent(pathname));
+  if (!name.endsWith(".glb")) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("404 不是模型文件: " + name);
+    return;
+  }
+  const target = path.join(tripo.OUT_DIR, name);
+  fs.stat(target, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("404 模型不存在: " + name);
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": MIME[".glb"] || "model/gltf-binary",
+      "Content-Length": stat.size,
+      "Cache-Control": "no-store"
+    });
+    fs.createReadStream(target).pipe(res);
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
@@ -168,6 +192,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.writeHead(405).end("仅支持 GET / POST");
+    return;
+  }
+
+  /* 玩家生成的建筑模型要按 Tripo 的真实输出目录取，不能走 web/ 静态目录：
+     默认两者是同一处（web/models/buildings），但 TRIPO_OUT_DIR 可以把它指到别处
+     （测试隔离、换盘存储），那时建筑仍然要能加载出来。 */
+  if (pathname.startsWith("/models/buildings/")) {
+    serveBuilding(req, res, pathname);
     return;
   }
 

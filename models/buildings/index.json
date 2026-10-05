@@ -1,0 +1,92 @@
+[
+  {
+    "file": "bmukz9cwq_902a.glb",
+    "prompt": "",
+    "createdAt": 1790583626915.316,
+    "size": 2364
+  },
+  {
+    "file": "mock_mukz96xt_e1a5eb.glb",
+    "prompt": "",
+    "createdAt": 1790583619186.973,
+    "size": 2364
+  },
+  {
+    "file": "bmukz9cwq_902a.glb",
+    "prompt": "霓虹小屋",
+    "taskId": "mock_mukz96xt_e1a5eb",
+    "createdAt": 1790583626930,
+    "size": 2364
+  },
+  {
+    "file": "bmul30juz_95f8.glb",
+    "prompt": "一座石砌小屋",
+    "taskId": "mock_mul30f7s_95c261",
+    "createdAt": 1790589934478,
+    "size": 2364
+  },
+  {
+    "file": "bmullacva_41da.glb",
+    "prompt": "一座石砌小屋",
+    "taskId": "mock_mulla85k_cafb9d",
+    "createdAt": 1790620625193,
+    "size": 2364
+  },
+  {
+    "file": "bmullan6d_6062.glb",
+    "prompt": "木质瞭望塔",
+    "taskId": "mock_mullaii3_05352b",
+    "createdAt": 1790620638503,
+    "size": 2364
+  },
+  {
+    "file": "bmullas2s_b33e.glb",
+    "prompt": "红顶小磨坊",
+    "taskId": "mock_mullaneu_3ab80a",
+    "createdAt": 1790620644826,
+    "size": 2364
+  },
+  {
+    "file": "bmullc19e_ce7f.glb",
+    "prompt": "测试即时刷新",
+    "taskId": "mock_mullbwln_7452d7",
+    "createdAt": 1790620703398,
+    "size": 2364
+  },
+  {
+    "file": "bmullczjo_348d.glb",
+    "prompt": "石砌钟楼",
+    "taskId": "mock_mullcuvv_5f6622",
+    "createdAt": 1790620747821,
+    "size": 2364
+  },
+  {
+    "file": "bmulld4fh_117a.glb",
+    "prompt": "木栅栏小屋",
+    "taskId": "mock_mullczrr_5466bc",
+    "createdAt": 1790620754148,
+    "size": 2364
+  },
+  {
+    "file": "bmuo5vlgh_8e07.glb",
+    "prompt": "房子",
+    "taskId": "mock_muo5viu4_5c2f32",
+    "createdAt": 1790776140721,
+    "size": 2364
+  },
+  {
+    "file": "bmuo66048_d163.glb",
+    "prompt": "房子",
+    "taskId": "mock_muo65yj8_a9d154",
+    "createdAt": 1790776626268,
+    "size": 2364
+  },
+  {
+    "file": "bmuo69pq9_bf5c.glb",
+    "prompt": "房子",
+    "taskId": "mock_muo69o5g_3d5e2a",
+    "createdAt": 1790776799431,
+    "size": 2364,
+    "cacheKey": "房子|v3.1-20260211|8000|true"
+  }
+]

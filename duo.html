@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#12001c" />
+    <meta name="description" content="口袋星球双人分屏：一块屏幕两个玩家，一个键鼠一个手柄，或者两只手柄各控一位。" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2312001c'/%3E%3Cpath d='M32 10 14 42h11v12h14V42h11Z' fill='%237df0b0'/%3E%3C/svg%3E" />
+    <title>口袋星球：漫游 · 双人分屏</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #12001c; overflow: hidden; }
+      body {
+        font: 13px/1.5 -apple-system, "PingFang SC", system-ui, sans-serif;
+        color: #e8dcff;
+      }
+
+      .bar {
+        height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 14px;
+        background: rgba(10, 0, 20, .92);
+        border-bottom: 1px solid rgba(170, 90, 255, .28);
+        position: relative;
+        z-index: 10;
+      }
+      .brand { display: flex; align-items: center; gap: 7px; font-weight: 600; letter-spacing: .4px; white-space: nowrap; }
+      .brand small { font-weight: 400; opacity: .55; letter-spacing: 0; }
+      .brand i {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #7df0b0; box-shadow: 0 0 10px #7df0b0; display: inline-block;
+      }
+
+      .seats { display: flex; gap: 10px; flex: 1; min-width: 0; }
+      .seat {
+        display: flex; align-items: baseline; gap: 7px;
+        padding: 4px 11px; border-radius: 9px; min-width: 0;
+        background: rgba(170, 90, 255, .10);
+        border: 1px solid rgba(170, 90, 255, .22);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .seat b { font-weight: 700; color: #c9a8ff; }
+      .seat .who { opacity: .6; font-size: 12px; }
+      .seat .where { opacity: .82; font-variant-numeric: tabular-nums; }
+      .seat[data-device="pad"] .who { color: #7df0b0; opacity: .85; }
+      .seat em { font-style: normal; color: #ffd48a; font-size: 12px; }
+
+      .tools { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+      .pads { font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; }
+      .pads.alert { color: #ffb4c6; opacity: 1; }
+      button, .tools a {
+        font: inherit; font-size: 12px; color: #e8dcff; cursor: pointer;
+        background: rgba(120, 60, 200, .28);
+        border: 1px solid rgba(170, 90, 255, .4);
+        border-radius: 8px; padding: 5px 11px;
+      }
+      button:hover, .tools a:hover { background: rgba(150, 80, 240, .38); }
+
+      .stage { display: flex; height: calc(100% - 46px - 60px); background: #000; }
+      .stage[data-layout="col"] { flex-direction: column; }
+      .stage iframe { flex: 1 1 50%; width: 100%; height: 100%; border: 0; display: block; background: #12001c; }
+      .stage[data-layout="row"] iframe:first-child { border-right: 2px solid rgba(170, 90, 255, .5); }
+      .stage[data-layout="col"] iframe:first-child { border-bottom: 2px solid rgba(170, 90, 255, .5); }
+
+      .modes {
+        height: 60px; display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px; padding: 6px 14px;
+        background: rgba(20, 6, 36, .88);
+        border-bottom: 1px solid rgba(170, 90, 255, .28);
+      }
+      .mode {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 11px; border-radius: 9px;
+        background: rgba(170, 90, 255, .08);
+        border: 1px solid rgba(170, 90, 255, .20);
+        min-width: 0; overflow: hidden; white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .mode-title {
+        font-size: 11px; letter-spacing: .4px;
+        color: #c9a8ff; opacity: .75; flex: 0 0 auto;
+      }
+      .mode-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+      .mode-body b { font-weight: 700; color: #c9a8ff; }
+
+      .duo-board { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+      .duo-board-row {
+        display: inline-flex; align-items: baseline; gap: 5px;
+        padding: 2px 7px; border-radius: 6px;
+        background: rgba(170, 90, 255, .12);
+      }
+      .duo-board-row-1 { color: #ffd48a; }
+      .duo-board-row-2 { color: #7df0b0; }
+      .duo-board-region { opacity: .9; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+      .duo-board-dist { opacity: .65; font-size: 11px; }
+      .duo-board-switch { opacity: .55; font-size: 11px; }
+      .duo-board-time { margin-left: auto; opacity: .65; font-size: 11px; }
+
+      .duo-race { display: flex; align-items: center; gap: 9px; min-width: 0; }
+      .duo-race-row {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 2px 7px; border-radius: 6px;
+        background: rgba(170, 90, 255, .12);
+      }
+      .duo-race-bar {
+        width: 70px; height: 8px; border-radius: 4px;
+        background: rgba(170, 90, 255, .15); overflow: hidden;
+      }
+      .duo-race-bar i {
+        display: block; height: 100%; background: linear-gradient(90deg, #7df0b0, #c9a8ff);
+        transition: width .25s ease-out;
+      }
+      .duo-race-count { opacity: .85; font-size: 12px; }
+      .duo-race-time { opacity: .65; font-size: 11px; }
+      .duo-race-winner {
+        color: #ffd48a; font-weight: 600;
+        padding: 2px 8px; border-radius: 6px;
+        background: rgba(255, 212, 138, .14);
+      }
+      .duo-race-start, .duo-race-again {
+        font: inherit; font-size: 12px; color: #e8dcff; cursor: pointer;
+        background: rgba(120, 60, 200, .32);
+        border: 1px solid rgba(170, 90, 255, .45);
+        border-radius: 6px; padding: 4px 11px;
+        margin-left: auto;
+      }
+      .duo-race-start:hover, .duo-race-again:hover { background: rgba(150, 80, 240, .42); }
+
+      .duo-beacon { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; }
+      .duo-beacon-item {
+        display: inline-flex; align-items: baseline; gap: 5px;
+        padding: 3px 8px; border-radius: 7px;
+        font-size: 12px;
+        animation: duo-beacon-in .12s ease-out;
+      }
+      @keyframes duo-beacon-in {
+        from { opacity: 0; transform: translateY(-3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .duo-beacon-region { background: rgba(125, 240, 176, .14); color: #7df0b0; border: 1px solid rgba(125, 240, 176, .32); }
+      .duo-beacon-collect { background: rgba(255, 212, 138, .14); color: #ffd48a; border: 1px solid rgba(255, 212, 138, .32); }
+      .duo-beacon-text { opacity: .92; }
+      .duo-beacon-left { opacity: .5; font-size: 10px; }
+
+      dialog {
+        max-width: 520px; border: 1px solid rgba(170, 90, 255, .45); border-radius: 16px;
+        background: #1a0030; color: #e8dcff; padding: 26px 28px;
+        font: 14px/1.75 -apple-system, "PingFang SC", system-ui, sans-serif;
+      }
+      dialog::backdrop { background: rgba(6, 0, 14, .74); }
+      dialog h2 { margin: 0 0 6px; font-size: 19px; }
+      dialog p { margin: 0 0 14px; opacity: .78; }
+      dialog kbd {
+        font: 12px/1 ui-monospace, monospace; padding: 2px 6px; border-radius: 5px;
+        background: rgba(170, 90, 255, .2); border: 1px solid rgba(170, 90, 255, .35);
+      }
+      dialog dl { margin: 0 0 4px; }
+      dialog dl > div { display: flex; gap: 14px; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
+      dialog dt { flex: 0 0 150px; opacity: .95; }
+      dialog dd { margin: 0; opacity: .72; }
+      dialog .close { margin-top: 18px; }
+      dialog .note { font-size: 12px; opacity: .6; margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="brand"><i></i>口袋星球<small>双人分屏</small></span>
+      <div class="seats">
+        <span class="seat" id="chip-1" data-device="kb">
+          <b>P1</b><span class="who">键鼠</span><span class="where">正在进入星球…</span>
+        </span>
+        <span class="seat" id="chip-2" data-device="pad">
+          <b>P2</b><span class="who">手柄</span><span class="where">正在进入星球…</span>
+        </span>
+      </div>
+      <div class="tools">
+        <span class="pads" id="pad-status">检测手柄…</span>
+        <a href="./" id="btn-solo" title="回到单人模式">单人模式</a>
+        <button id="btn-planet" title="切换星球（两个画面同时切换，进度不丢）">🪐 赛博星球</button>
+        <button id="btn-theme" title="两个画面同时切换昼夜（重载画面，进度不丢）">☀️ 白天</button>
+        <button id="bgm-toggle" title="背景音乐开关（快捷键 M）">♪ 音乐</button>
+        <button id="btn-layout">上下布局</button>
+        <button id="btn-help">操作说明</button>
+      </div>
+    </header>
+
+    <section class="modes" aria-label="玩法面板">
+      <div class="mode" id="mode-board">
+        <span class="mode-title">汇总板</span>
+        <div class="mode-body" id="board-body"></div>
+      </div>
+      <div class="mode" id="mode-race">
+        <span class="mode-title">速度赛</span>
+        <div class="mode-body" id="race-body"></div>
+      </div>
+      <div class="mode" id="mode-beacon">
+        <span class="mode-title">信标</span>
+        <div class="mode-body" id="beacon-body"></div>
+      </div>
+    </section>
+
+    <main class="stage" id="stage" data-layout="row">
+      <!-- src 由脚本按当前主题写入：昼夜两版资源不同，写死后就没法随主题切换。
+           空起手也不会闪两次加载 —— 首次导航就是目标主题。 -->
+      <iframe id="duo-seat-1" name="duo-seat-1" title="玩家 1"></iframe>
+      <iframe id="duo-seat-2" name="duo-seat-2" title="玩家 2"></iframe>
+    </main>
+
+    <dialog id="help-dialog">
+      <h2>双人分屏 · 怎么玩</h2>
+      <p>一块屏幕两位玩家，同一张霓虹星球地图，各自一个角色、各自一份手记进度。</p>
+      <dl>
+        <div><dt>P1 · 键鼠</dt><dd><kbd>WASD</kbd> 移动，<kbd>Shift</kbd> 奔跑，<kbd>Space</kbd> 跳跃，<kbd>E</kbd> 互动，拖拽环视，滚轮缩放</dd></div>
+        <div><dt>P2 · 手柄</dt><dd>左摇杆移动，右摇杆环视，<kbd>×</kbd> 跳跃，<kbd>□</kbd> 互动，<kbd>△</kbd> 换视角，<kbd>○</kbd> 取消，<kbd>L2</kbd> 奔跑，<kbd>R2</kbd>/<kbd>R1</kbd> 拉近，<kbd>L1</kbd> 拉远，触摸板镜头回正</dd></div>
+        <div><dt>两只手柄</dt><dd>P1 拿第 1 只、P2 拿第 2 只；只插一只时，它归 P2，P1 用键鼠</dd></div>
+        <div><dt>玩法面板</dt><dd>汇总板显示双方用时/累计移动/换区；速度赛点「开始计时」后谁先集齐 7 个奇迹谁胜；信标自动弹出对方区域切换与奇迹收集</dd></div>
+        <div><dt>昼夜切换</dt><dd>顶栏「☀️ 白天 / 🌙 夜晚」按钮，两个画面同时换主题，进度不丢</dd></div>
+        <div><dt>手柄没反应</dt><dd>先按一下手柄上的任意键唤醒（浏览器要求一次交互）</dd></div>
+        <div><dt>键盘没反应</dt><dd>点一下左边画面即可（键鼠只控制 P1，点右边不会切过去）</dd></div>
+      </dl>
+      <p class="note">
+        说明：游戏本体是打包好的单机版本，不能改，所以两个玩家跑的是两个独立的世界实例 ——
+        地图、地标完全相同，但彼此看不见。左上角的坐标与方位用于互相找路。
+      </p>
+      <button class="close" id="btn-close-help">开始玩</button>
+    </dialog>
+
+    <script src="./bridge/duo-modes.js"></script>
+    <script src="./bridge/duo-pads.js"></script>
+    <!-- 背景音乐。分屏的坑：用户手势是按文档算的，点 iframe 里的游戏区域，
+         宿主页拿不到这次手势，宿主调的 AudioContext.resume() 会被自动播放策略
+         一直卡住（实测：点宿主顶栏 → running；点座位内部 → 仍 suspended）。
+         所以声音只能由座位自己放，而且只能指定一个座位放，否则双重奏。
+         宿主页在这里只当遥控器：不放音，只负责工具栏按钮 ↔ 座位之间的同步。 -->
+    <script>window.LPBGM_REMOTE = true;</script>
+    <script src="./bridge/bgm.js"></script>
+    <script>
+      (function () {
+        "use strict";
+
+        var Pads = window.DuoPads;
+        var frame1 = document.getElementById("duo-seat-1");
+        var frame2 = document.getElementById("duo-seat-2");
+        var chip1 = document.getElementById("chip-1");
+        var chip2 = document.getElementById("chip-2");
+        var padStatus = document.getElementById("pad-status");
+        var stage = document.getElementById("stage");
+
+        /* ============================================================
+         * 0. 昼夜主题与星球选择：宿主 URL 决定两个座位加载什么
+         *    - 原版星球：?theme=day 换白天版资源，整页重载
+         *    - 赛博星球：?planet=cyber 加载 GLB 模型 + 运行时昼夜切换
+         * ============================================================ */
+        var hostParams = new URLSearchParams(location.search);
+        var day = hostParams.get("theme") === "day";
+        var cyber = hostParams.get("planet") === "cyber";
+        var themeParam = day ? "&theme=day" : "";
+        var planetParam = cyber ? "&planet=cyber" : "";
+        /* music=1 只给座位 1：座位的点击/按键算它自己的用户手势，声音必须由
+           "拿得到手势的那个文档"来放（见下面 bgm.js 里那段注释）。 */
+        frame1.src = "./index.html?seat=1&music=1" + themeParam + planetParam;
+        frame2.src = "./index.html?seat=2" + themeParam + planetParam;
+        var btnTheme = document.getElementById("btn-theme");
+        var btnPlanet = document.getElementById("btn-planet");
+        btnPlanet.textContent = cyber ? "🪐 原版星球" : "🪐 赛博星球";
+        btnPlanet.title = cyber
+          ? "回到原版星球（切换会重新加载两个画面，进度不丢）"
+          : "前往赛博星球（高精度模型，首次加载 57MB 需等待，进度不丢）";
+        btnPlanet.addEventListener("click", function () {
+          var params = new URLSearchParams(location.search);
+          if (params.get("planet") === "cyber") params.delete("planet");
+          else params.set("planet", "cyber");
+          location.search = params.toString(); /* 整页重载，两个画面同时换星球 */
+        });
+        if (cyber) {
+          /* 赛博星球的昼夜由座位里的 daylight-mode.js 运行时切换，
+             不重载：两个座位一起 toggle，按钮文字跟着帧内状态走。 */
+          btnTheme.textContent = "🌙 夜晚";
+          btnTheme.addEventListener("click", function () {
+            [frame1, frame2].forEach(function (f) {
+              var w = f.contentWindow;
+              if (w && w.LPDaylight) w.LPDaylight.toggle();
+            });
+          });
+          setInterval(function () {
+            var w = frame1.contentWindow;
+            var isDay = !!(w && w.LPDaylight && w.LPDaylight.isDay);
+            btnTheme.textContent = isDay ? "🌙 夜晚" : "☀️ 白天";
+          }, 500);
+        } else {
+          btnTheme.textContent = day ? "🌙 夜晚" : "☀️ 白天";
+          if (day) {
+            var themeMeta = document.querySelector('meta[name="theme-color"]');
+            if (themeMeta) themeMeta.setAttribute("content", "#d4e8d0");
+          }
+          btnTheme.addEventListener("click", function () {
+            var params = new URLSearchParams(location.search);
+            if (params.get("theme") === "day") params.delete("theme");
+            else params.set("theme", "day");
+            location.search = params.toString(); /* 整页重载，两个画面同时换主题 */
+          });
+        }
+
+        var remote = { 1: null, 2: null };
+        /* 用 null 起手，第一帧就能把「未检测到手柄」如实渲染出来 */
+        var padKey = { 1: null, 2: null };
+        var padInfo = { 1: null, 2: null };
+
+        /* ============================================================
+         * 1. 手柄分发：宿主尽量读到，读到就送给对应座位
+         * ============================================================ */
+        Pads.broadcast(seatWindow, function (seat, pad) {
+          var key = pad ? pad.id + "#" + pad.index : "";
+          if (padKey[seat] === key) return;
+          padKey[seat] = key;
+          padInfo[seat] = pad;
+          renderPadStatus();
+        });
+        Pads.listenRumble();
+
+        function seatWindow(seat) {
+          return (seat === 1 ? frame1 : frame2).contentWindow;
+        }
+
+        function renderPadStatus() {
+          var total = Pads.list(Pads.readAll()).length;
+          if (!total) {
+            padStatus.textContent = "未检测到手柄（P2 可按一下手柄任意键唤醒）";
+            padStatus.className = "pads alert";
+            return;
+          }
+          var parts = [];
+          if (padInfo[1]) parts.push("P1 ← 手柄 " + (padInfo[1].index + 1));
+          if (padInfo[2]) parts.push("P2 ← 手柄 " + (padInfo[2].index + 1));
+          padStatus.textContent = "已识别 " + total + " 只 · " + parts.join(" · ");
+          padStatus.className = "pads";
+        }
+
+        /* ============================================================
+         * 2. 座位上报的坐标与进度，拼成「队友方位」
+         * ============================================================ */
+        var Modes = window.DuoModes.install();
+        var boardBody = document.getElementById("board-body");
+        var raceBody = document.getElementById("race-body");
+        var beaconBody = document.getElementById("beacon-body");
+
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || typeof d !== "object" || d.type !== "duo-state") return;
+          remote[d.seat] = d;
+          Modes.board.update(d.seat, d);
+          Modes.race.update(d.seat, d);
+          Modes.beacon.update(d.seat, d);
+          renderSeats();
+        });
+
+        /* 玩法面板渲染循环 —— render 自带 250ms 节流，每帧调一次不会浪费 */
+        function loop() {
+          Modes.beacon.tick();
+          Modes.board.render(boardBody);
+          Modes.race.render(raceBody);
+          Modes.beacon.render(beaconBody);
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+
+        function renderSeats() {
+          var a = remote[1];
+          var b = remote[2];
+          var bearing = "";
+          if (a && b) {
+            bearing = Pads.bearingText(Pads.parseCoord(a.coords), Pads.parseCoord(b.coords));
+          }
+          fillChip(chip1, a, "键鼠", bearing);
+          fillChip(chip2, b, "手柄", bearing);
+        }
+
+        function fillChip(chip, data, device, bearing) {
+          var who = chip.querySelector(".who");
+          var where = chip.querySelector(".where");
+          who.textContent = device;
+          if (!data) {
+            where.textContent = "正在进入星球…";
+            return;
+          }
+          var text = data.coords || "—";
+          if (data.region) text += " · " + data.region;
+          if (data.collected) text += " · 奇迹 " + data.collected + "/7";
+          where.textContent = text;
+          var mark = chip.querySelector("em");
+          if (mark) mark.remove();
+          /* 方位标在 P2 那一格，读起来就是「P2 在 P1 的哪个方向」 */
+          if (bearing && chip === chip2) {
+            var em = document.createElement("em");
+            em.textContent = "在 P1 的" + bearing + "方";
+            chip.appendChild(em);
+          }
+        }
+
+        /* ============================================================
+         * 3. 界面工具
+         * ============================================================ */
+        document.getElementById("btn-layout").addEventListener("click", function () {
+          var next = stage.dataset.layout === "row" ? "col" : "row";
+          stage.dataset.layout = next;
+          this.textContent = next === "row" ? "上下布局" : "左右布局";
+        });
+
+        var helpDialog = document.getElementById("help-dialog");
+        document.getElementById("btn-help").addEventListener("click", function () {
+          if (typeof helpDialog.showModal === "function") helpDialog.showModal();
+        });
+        document.getElementById("btn-close-help").addEventListener("click", function () {
+          helpDialog.close();
+        });
+
+        /* 键鼠玩家在左边，进来就先把焦点交给他 */
+        window.addEventListener("load", function () {
+          setTimeout(function () {
+            try {
+              frame1.contentWindow.focus();
+            } catch (e) {
+              /* 焦点抢不到也不影响手柄玩家 */
+            }
+          }, 500);
+        });
+      })();
+    </script>
+  </body>
+</html>

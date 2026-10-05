@@ -236,12 +236,21 @@ http://localhost:8765/bridge/duo-selftest.html
 - **建筑自动贴地**：用 `world.surface(dir)` 取真实地表半径，按径向朝上摆放，
   不悬空、不陷入、自动避开水面
 - **存档**：建筑清单存 localStorage，刷新后自动重建
+- **相同描述不重复扣费**：服务端按 `描述|模型|面数|贴图` 做缓存，
+  同一个描述第二次生成实测 **62 ms** 返回（首次真实生成 2357 ms）
 - **没有 API Key 也能玩**：服务端自动进 mock 模式，用占位小屋走完整条链路，
   接上 Key 就换成真模型，前端一行不用改
 
 ```bash
 TRIPO_API_KEY=tsk_xxxxxxxx node server/server.js   # 接真实 Tripo 3D 生成
 node server/server.js                              # 不配 Key → mock 模式
+```
+
+**自己动手验一遍**（两个脚本都用隔离目录 + 强制 mock，不会真扣费）：
+
+```bash
+node tests/run.mjs                 # 全套 220 项，含缓存 35 项
+node tools/verify-build-e2e.mjs    # 真开 Chrome：收集 → 生成 → 摆上星球 → 刷新恢复
 ```
 
 ![建造工坊实际效果](docs/tripo-village.png)
@@ -338,8 +347,10 @@ little-planet-controller/
 │   ├── fit-planet.mjs            离线算模型-星球贴合参数
 │   ├── fixtures/                 测试夹具 GLB（带贴图 / 真实 Tripo 子集 / 压测）
 │   ├── build-ds5-standalone-html.mjs 离线单文件版打包脚本
-│   └── verify-ds5-hardware.mjs   DS5 硬件输出验证脚本
-├── tests/                        自动化测试（node tests/run.mjs）
+│   ├── verify-ds5-hardware.mjs   DS5 硬件输出验证脚本
+│   ├── verify-build-e2e.mjs      建造工坊端到端验证（真开 Chrome）
+│   └── record-demo.mjs           录演示视频（Chrome headless + CDP 逐帧抓）
+├── tests/                        自动化测试（node tests/run.mjs，220 项）
 └── docs/
     ├── PROTOCOL.md               完整接口协议
     ├── TRIPO.md                  建造工坊：Tripo 接入、球面贴合、验收方法

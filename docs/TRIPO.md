@@ -115,12 +115,26 @@ curl https://openapi.tripo3d.ai/v3/account/balance -H "Authorization: Bearer $TR
 
 | 手段 | 说明 |
 | --- | --- |
+| **服务端缓存描述词（已实现）** | 相同描述直接复用已生成的 GLB，不重复扣费 |
 | 用 `TRIPO_MODEL=P1-20260311` | 游戏向变体，更便宜且拓扑更适合实时渲染 |
 | 调低 `TRIPO_FACE_LIMIT` | 星球上建筑很小，3000 面完全够看，默认是 8000 |
-| 服务端缓存 prompt | 相同描述直接复用已生成的 GLB，不重复扣费 |
 
-最后一条最有效：这个玩法的描述词离散度其实很低（玩家来来回回就那几十种房子），
-缓存命中率会很高。**建议真上线前把这一条做掉。**
+**缓存已经做掉了，而且是省钱主力。** 这个玩法的描述词离散度很低（玩家来来回回就那几十种房子），
+命中率很高。实测同一个描述第二次生成 **62 ms** 返回，对比首次真实生成的 **2357 ms**。
+
+#### 缓存怎么工作
+
+缓存键 = `归一化描述 | 模型 | 面数 | 贴图`，写在 `web/models/buildings/index.json` 的
+`cacheKey` 字段上。命中就返回一个 `cached:<文件名>` 的伪任务号，前端照常轮询、照常落盘，
+一行都不用改 —— 服务端把伪任务伪装成「已经 success」，`/api/tripo/save` 也直接返回已有文件。
+
+几个边界（都有测试盯着）：
+
+- 换模型 / 换面数 / 关贴图 → 缓存键不同 → 重新生成
+- 描述归一化只压连续空白，**不删空白**：`测试 小屋` 和 `测试小屋` 算两个需求
+- 模型文件被删掉 → 命中失败，自动降级为重新生成
+- 重启服务器后仍然命中（`cacheKey` 存在索引里，是持久的）
+- 删除建筑（`DELETE /api/tripo/buildings?file=`）会连记录一起删，缓存自然失效
 
 ### 错误码
 
@@ -386,3 +400,37 @@ LPBuild.placeFromUrl('/models/buildings/xxx.glb', 4)  // 直接摆本地 GLB
 | `tools/fit-planet.mjs` | 离线算模型-星球贴合参数 |
 | `tools/fixtures/` | 测试夹具：`test-textured`（带贴图）、`test-real-tripo`（真实 Tripo 输出子集）、`perf-8000`（压测） |
 | `web/models/buildings/` | 生成出来的建筑 GLB（运行时数据，不是源码） |
+| `tests/test-tripo-cache.mjs` | 缓存测试（35 项），起隔离服务器但不开浏览器 |
+| `tools/verify-build-e2e.mjs` | 端到端验证（15 项），真开 Chrome 走完整链路 |
+
+### 环境变量
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `TRIPO_API_KEY` | 空 | 不设就进 mock 模式 |
+| `TRIPO_MODEL` | `v3.1-20260211` | 模型档次 |
+| `TRIPO_FACE_LIMIT` | `8000` | 面数上限 |
+| `TRIPO_MOCK_MS` | `6000` | mock 生成的假耗时，录视频时调短 |
+| `TRIPO_OUT_DIR` | `web/models/buildings` | 模型落盘目录，测试隔离用 |
+| `PORT` | `8765` | 服务端口 |
+
+---
+
+## 十、怎么验证（两个层次，都别省）
+
+```bash
+# 一、接口层：起隔离服务器，不开浏览器，快
+node tests/test-tripo-cache.mjs      # 或 node tests/run.mjs 跑全套 220 项
+
+# 二、真实浏览器端到端：收集 → 生成 → 落盘 → 摆上星球 → 刷新恢复
+node tools/verify-build-e2e.mjs
+```
+
+两个脚本都会把产物落到 `/tmp` 的临时目录、用非默认端口、并**显式删掉 `TRIPO_API_KEY`
+强制 mock —— 跑多少次都不会真的扣费**。
+
+端到端脚本三个坑，改参数前先看（文件头也有注释）：
+
+1. Chrome headless 必须 `--use-angle=metal`，否则退回软件渲染，帧率从 60 掉到 5，会误判超时
+2. screencast 的 jpeg quality 别超过 75，再高帧率会崩
+3. 截图高度必须是偶数，奇数会被 libx264 直接拒绝编码

@@ -22,8 +22,12 @@ import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const NODE = process.execPath;
+
+/* Chrome 路径：macOS 走默认安装位置，Linux/CI 用 CHROME_PATH 覆盖 */
+const CHROME = process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+/* 无头渲染后端：macOS 上 metal 最快，其他平台用各自默认值 */
+const GL_ARGS = process.platform === "darwin" ? ["--use-angle=metal", "--enable-unsafe-swiftshader"] : [];
 
 const PORT = Number(process.env.E2E_PORT || 8802);
 const CDP_PORT = Number(process.env.E2E_CDP || 9333);
@@ -71,7 +75,7 @@ const chrome = spawn(CHROME, [
   "--user-data-dir=" + USER_DIR,
   "--no-first-run", "--no-default-browser-check",
   "--window-size=1280,720",
-  "--use-angle=metal", "--enable-unsafe-swiftshader",
+  ...GL_ARGS,
   "--hide-scrollbars",
   "--force-device-scale-factor=1",
   "about:blank"

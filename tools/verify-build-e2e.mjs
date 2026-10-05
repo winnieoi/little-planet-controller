@@ -187,6 +187,24 @@ try {
   check(!!real[0] && real[0].cacheKey.indexOf("端到端验证塔") === 0, "缓存键以描述开头", real[0] && real[0].cacheKey);
   check(!!real[0] && !!real[0].prompt, "记录里有描述（不是空 prompt 的桩记录）", JSON.stringify(real[0] && real[0].prompt));
 
+  /* 模型要能通过 HTTP 取到，前端才摆得上去。这条专门盯 TRIPO_OUT_DIR 的坑：
+     输出目录被指到别处时，/models/buildings/ 必须跟着走，不能还去查 web/ 静态目录 */
+  console.log("\n[模型可取]");
+  const r = await fetch(BASE + "/models/buildings/" + real[0].file);
+  check(r.ok, "输出目录里的模型能通过 URL 取到", "status " + r.status);
+  if (r.ok) {
+    const buf = Buffer.from(await r.arrayBuffer());
+    check(buf.readUInt32LE(0) === 0x46546c67, "取到的是合法 GLB");
+    check(
+      /gltf-binary|octet-stream/.test(r.headers.get("content-type") || ""),
+      "Content-Type 是模型类型",
+      r.headers.get("content-type")
+    );
+  }
+  /* 顺手确认目录穿越被挡住 */
+  const evil = await fetch(BASE + "/models/buildings/..%2f..%2f..%2fpackage.json");
+  check(!evil.ok, "目录穿越请求被挡住", "status " + evil.status);
+
   /* 刷新后应当恢复出两座建筑 */
   console.log("\n[刷新持久化]");
   await ps("Page.navigate", { url: BASE + "/?build=1" });

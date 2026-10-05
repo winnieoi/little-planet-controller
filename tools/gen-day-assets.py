@@ -11,7 +11,7 @@ import difflib
 import sys
 
 BASE = r"C:\Users\张朵朵\Desktop"
-PROJ = BASE + r"\little-planet-controller"
+PROJ = BASE + r"\pocket-planet-roam"
 PREV = BASE + r"\preview"
 
 # ---------- 读入 ----------

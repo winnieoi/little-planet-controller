@@ -58,6 +58,20 @@ fs.cpSync(WEB, tmp, { recursive: true });
    .nojekyll 让它原样发布所有文件，省得哪天加个 _xxx.js 就莫名 404。 */
 fs.writeFileSync(path.join(tmp, ".nojekyll"), "");
 
+/* 静态托管标记：告诉页面「这里没有 Node 后端」，别去连 WebSocket、别发 API 探测。
+   页面读不到后端时本来可以自己探测，但那次探测本身会在控制台留下一条 404；
+   既然发布时就知道是静态站，直接把结论写进去更干净。 */
+const MARK = "\n<!-- 静态托管标记，由 publish-gh-pages.mjs 注入 -->\n"
+  + "<script>window.LP_STATIC_HOST = true;</script>";
+for (const page of ["index.html", "duo.html"]) {
+  const f = path.join(tmp, page);
+  if (!fs.existsSync(f)) continue;
+  const html = fs.readFileSync(f, "utf8");
+  if (html.includes("LP_STATIC_HOST")) continue;
+  fs.writeFileSync(f, html.replace("</head>", MARK + "\n</head>"));
+  step("注入静态托管标记 → " + page);
+}
+
 /* 自定义域名：写进 CNAME 文件，GitHub 会自动签证书。
    DNS 那边要自己加一条 CNAME 记录指向 <user>.github.io（脚本管不了 DNS）。 */
 if (domain) {

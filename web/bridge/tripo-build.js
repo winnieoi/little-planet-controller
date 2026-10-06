@@ -562,10 +562,12 @@
   var backendMissing = false;
   var STATIC_MSG =
     "当前是纯静态托管（GitHub Pages 等），没有 Node 后端，生成功能不可用。"
-    + "要在线生成的話得部署到带 Node 运行时的平台，或在本地用 start.command 启动。";
+    + "要在线生成的话得部署到带 Node 运行时的平台，或在本地用 start.command 启动。";
 
   async function probeBackend() {
-    if (isOffline()) {
+    /* 静态托管的产物里发布脚本会打 LP_STATIC_HOST 标记，有标记就别再发请求了 ——
+       探测本身会吃一个 404，控制台照样不干净。 */
+    if (isOffline() || window.LP_STATIC_HOST) {
       backendMissing = true;
       return;
     }

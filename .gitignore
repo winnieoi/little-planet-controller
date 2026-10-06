@@ -14,3 +14,6 @@ node_modules/
 
 # Tripo API Key（私密，绝不入库）
 .tripo-key
+
+# 构建产物：源映射文件（体积大，仅 F12 调试用，不影响网站运行）
+*.map

@@ -3,121 +3,467 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#1a0020" />
-    <meta name="description" content="一座霓虹闪烁的赛博朋克低多边形小岛。漫步紫色草原、工业绿洲与珊瑚礁，收集属于你的数字奇迹。" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230c292d'/%3E%3Cpath d='M32 8 12 44h13v12h14V44h13Z' fill='%23bce091'/%3E%3C/svg%3E" />
-    <title>口袋星球：漫游</title>
-    <!-- 分屏双人的「座位」接线：必须早于游戏脚本执行（存档隔离要抢在它前面）。
-         只有 URL 带 ?seat=N 时才生效，单人玩法下它们什么都不做。 -->
-    <script src="./bridge/duo-pads.js"></script>
-    <script src="./bridge/duo-seat.js"></script>
-    <!-- 昼夜主题：?theme=day 加载白天版资源，默认夜晚版。
-         游戏本体文件不动 —— 白天版是按官方昼夜配色逐项映射生成的副本资源。
-         module 必须等 DOM 解析完再插入：动态插入的 module 默认 async，
-         可能赶在 body 解析前执行（那时 #world 还不存在）；
-         DOMContentLoaded 之后插入则与原先静态 module 的 defer 行为完全一致。 -->
-    <script>
-      (function () {
-        var q = new URLSearchParams(location.search);
-        var cyberPlanet = q.get("planet") === "cyber";
-        /* 赛博星球自带运行时昼夜（integration/daylight-mode.js），
-           ?theme 的资源副本切换只在原版星球生效 */
-        var day = q.get("theme") === "day" && !cyberPlanet;
-        /* 建造模式（?build=1）需要场景钩子 window.__LP_SCENE__/__LP_WORLD__，
-           官方原文件没有这行，所以用 tools/add-lp-hook.mjs 生成的副本
-           （与白天版、赛博版同样的做法：副本资源，官方原文件一行未动）。
-           赛博星球副本本来就带钩子，不再区分。 */
-        var build = q.get("build") === "1";
-        /* 游戏本体按星球选副本 */
-        var module = cyberPlanet    ? "index-cyber-CS6g4Xtd.js"
-                   : day && build   ? "index-tripo-day-CS6g4Xtd.js"
-                   : build          ? "index-tripo-CS6g4Xtd.js"
-                   : day            ? "index-day-CS6g4Xtd.js"
-                   :                  "index-CS6g4Xtd.js";
-        var css = document.createElement("link");
-        css.rel = "stylesheet";
-        css.crossOrigin = "anonymous";
-        css.href = "./assets/" + (day ? "index-day-" : "index-") + "CundtmH4.css";
-        document.head.appendChild(css);
-        function boot() {
-          var s = document.createElement("script");
-          s.type = "module";
-          s.crossOrigin = "anonymous";
-          s.src = "./assets/" + module;
-          document.head.appendChild(s);
+    <meta name="theme-color" content="#070b1d" />
+    <meta name="description" content="口袋星球合并版主菜单：进入探索游戏、手柄调试、双人模式与原版星球。" />
+    <title>口袋星球：漫游 · 主菜单</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #070b1d;
+        color: #f4f0ff;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      .shell {
+        position: relative;
+        min-height: 100vh;
+        min-height: 100svh;
+        isolation: isolate;
+      }
+
+      .backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: -3;
+        background-image: url("./assets/menu-background.jpg");
+        background-size: cover;
+        background-position: center;
+        filter: saturate(1.06) contrast(1.04);
+      }
+
+      .shade {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        background:
+          linear-gradient(90deg, rgba(4, 6, 20, 0.96) 0%, rgba(5, 7, 22, 0.9) 28%, rgba(5, 7, 22, 0.18) 58%, rgba(5, 7, 22, 0.52) 100%),
+          linear-gradient(180deg, rgba(4, 6, 20, 0.34), rgba(4, 6, 20, 0.18) 54%, rgba(4, 6, 20, 0.72));
+      }
+
+      .grain {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(90deg, #000 0%, #000 46%, transparent 80%);
+      }
+
+      .menu {
+        width: min(430px, calc(100vw - 40px));
+        min-height: 100vh;
+        min-height: 100svh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 42px 0 42px 56px;
+      }
+
+      .brand {
+        margin-bottom: 44px;
+      }
+
+      .brand-mark {
+        width: 78px;
+        height: 56px;
+        margin-bottom: 10px;
+        color: #dfe6ff;
+        filter: drop-shadow(0 0 18px rgba(150, 170, 255, 0.62));
+      }
+
+      .brand-mark * {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 320px;
+        font-size: 54px;
+        line-height: 0.98;
+        font-weight: 800;
+        letter-spacing: 0;
+        text-shadow: 0 0 18px rgba(173, 184, 255, 0.72), 0 0 38px rgba(84, 112, 255, 0.42);
+      }
+
+      .subtitle {
+        margin: 14px 0 0;
+        font-size: 20px;
+        line-height: 1.25;
+        color: #f0ecff;
+        font-family: "Segoe Print", "Comic Sans MS", "PingFang SC", cursive;
+        text-shadow: 0 0 12px rgba(183, 198, 255, 0.54);
+      }
+
+      .kicker {
+        margin-top: 4px;
+        font-size: 12px;
+        line-height: 1.6;
+        text-transform: uppercase;
+        color: rgba(244, 240, 255, 0.74);
+        letter-spacing: 0;
+      }
+
+      .actions {
+        display: grid;
+        gap: 16px;
+        width: 100%;
+      }
+
+      .menu-button {
+        position: relative;
+        min-height: 76px;
+        display: grid;
+        grid-template-columns: 54px 1fr 28px;
+        align-items: center;
+        gap: 14px;
+        padding: 11px 18px 11px 16px;
+        border: 1px solid rgba(187, 194, 255, 0.36);
+        border-radius: 8px;
+        background: rgba(14, 18, 55, 0.5);
+        color: #f6f3ff;
+        text-decoration: none;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 26px rgba(0, 0, 0, 0.26);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+      }
+
+      .menu-button::before {
+        content: "";
+        position: absolute;
+        inset: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        pointer-events: none;
+      }
+
+      .menu-button.primary,
+      .menu-button:focus-visible {
+        border-color: rgba(162, 187, 255, 0.92);
+        background: linear-gradient(90deg, rgba(80, 93, 214, 0.86), rgba(69, 93, 182, 0.58));
+        box-shadow: 0 0 0 1px rgba(160, 190, 255, 0.24), 0 0 22px rgba(103, 132, 255, 0.42), 0 16px 36px rgba(0, 0, 0, 0.34);
+        outline: none;
+      }
+
+      .menu-button:hover {
+        transform: translateX(4px);
+        border-color: rgba(225, 231, 255, 0.88);
+        background: rgba(44, 53, 130, 0.74);
+      }
+
+      .menu-button svg {
+        width: 45px;
+        height: 45px;
+        color: #dfe6ff;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        fill: none;
+      }
+
+      .label {
+        min-width: 0;
+      }
+
+      .label strong {
+        display: block;
+        font-size: 24px;
+        line-height: 1.12;
+        font-weight: 760;
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .label span {
+        display: block;
+        margin-top: 3px;
+        color: rgba(235, 238, 255, 0.72);
+        font-size: 13px;
+        line-height: 1.25;
+        letter-spacing: 0;
+      }
+
+      .arrow {
+        font-size: 34px;
+        line-height: 1;
+        color: rgba(238, 241, 255, 0.74);
+      }
+
+      .tagline {
+        margin-top: 44px;
+        max-width: 260px;
+        font-size: 20px;
+        line-height: 1.55;
+        color: rgba(244, 240, 255, 0.92);
+        text-shadow: 0 0 14px rgba(157, 173, 255, 0.5);
+      }
+
+      .status {
+        position: fixed;
+        right: 54px;
+        top: 42px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: rgba(246, 245, 255, 0.88);
+        background: rgba(9, 13, 36, 0.28);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        font-size: 13px;
+        line-height: 1.3;
+      }
+
+      .status i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #9af1ff;
+        box-shadow: 0 0 12px #9af1ff;
+      }
+
+      .footer-note {
+        position: fixed;
+        right: 58px;
+        bottom: 44px;
+        max-width: 190px;
+        color: rgba(246, 245, 255, 0.68);
+        font-size: 11px;
+        line-height: 1.55;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+
+      @media (max-width: 760px) {
+        body {
+          overflow: auto;
         }
-        if (document.readyState === "loading") {
-          document.addEventListener("DOMContentLoaded", boot);
-        } else {
-          boot();
+
+        .shade {
+          background:
+            linear-gradient(180deg, rgba(4, 6, 20, 0.92) 0%, rgba(4, 6, 20, 0.78) 45%, rgba(4, 6, 20, 0.68) 100%),
+            linear-gradient(90deg, rgba(4, 6, 20, 0.86), rgba(4, 6, 20, 0.28));
         }
-      })();
-    </script>
-    <!-- 星球选择：?planet=cyber 时加载「赛博星球」集成层（57MB GLB 高精度模型
-         + 运行时昼夜切换）。两个脚本都是经典脚本、自带轮询等待游戏场景，
-         动态插入时机安全。不传参数时什么都不加载，原版星球零影响。 -->
-    <script>
-      (function () {
-        if (new URLSearchParams(location.search).get("planet") !== "cyber") return;
-        ["./integration/cyber-planet.js", "./integration/daylight-mode.js"].forEach(function (src) {
-          var s = document.createElement("script");
-          s.src = src;
-          document.head.appendChild(s);
-        });
-      })();
-    </script>
-    <link rel="modulepreload" crossorigin href="./assets/three-gtj_l2uB.js">
+
+        .grain {
+          mask-image: none;
+        }
+
+        .menu {
+          width: 100%;
+          min-height: 100vh;
+          padding: 34px 20px 40px;
+          justify-content: flex-start;
+        }
+
+        .actions {
+          width: 100%;
+          max-width: calc(100vw - 40px);
+        }
+
+        .brand {
+          margin-bottom: 28px;
+        }
+
+        .brand-mark {
+          width: 62px;
+          height: 46px;
+        }
+
+        h1 {
+          max-width: 340px;
+          font-size: 38px;
+          line-height: 1.08;
+        }
+
+        .subtitle {
+          font-size: 17px;
+        }
+
+        .menu-button {
+          width: 100%;
+          max-width: calc(100vw - 40px);
+          min-width: 0;
+          min-height: 70px;
+          grid-template-columns: 46px 1fr 22px;
+          gap: 12px;
+          padding: 10px 14px;
+        }
+
+        .menu-button:hover {
+          transform: none;
+        }
+
+        .menu-button.primary,
+        .menu-button:focus-visible {
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.34);
+        }
+
+        .menu-button svg {
+          width: 38px;
+          height: 38px;
+        }
+
+        .label strong {
+          font-size: 21px;
+        }
+
+        .status,
+        .footer-note {
+          position: static;
+          margin-top: 24px;
+          max-width: none;
+          width: fit-content;
+        }
+
+        .footer-note {
+          margin-top: 18px;
+        }
+
+        .tagline {
+          margin-top: 30px;
+          font-size: 18px;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main id="app">
-      <canvas id="world" aria-label="口袋星球三维游戏。使用 WASD 移动，空格跳跃，E 互动。" tabindex="0"></canvas>
-      <div class="vignette" aria-hidden="true"></div>
-      <header class="topbar">
-        <a class="wordmark" href="./" aria-label="Little Planet 首页"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="11" stroke-width=".8"/><ellipse cx="18" cy="18" rx="17" ry="5" transform="rotate(-32 18 18)" stroke-width=".8"/><ellipse cx="18" cy="18" rx="4.5" ry="11" transform="rotate(-24 18 18)" stroke-width=".6"/><circle cx="30" cy="6" r="2" fill="currentColor" stroke="none"/></svg><span>LITTLE PLANET<small>A POCKET ADVENTURE</small></span></a>
-        <div class="top-actions">
-          <span class="weather"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1m0-15.6-2.1 2.1M6.3 17.7l-2.1 2.1"/></svg>一日晴好</span>
-          <button class="icon-button" id="sound-toggle" aria-label="开启自然音效" title="自然音效" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5ZM16 9l6 6m0-6-6 6"/></svg></button>
-          <button class="icon-button" id="help-toggle" aria-label="打开操作说明" title="操作说明"><span>?</span></button>
-        </div>
-      </header>
-      <aside class="journal-pill" aria-label="探索进度"><span class="journal-icon">✧</span><div><span class="tiny-label">ISLAND JOURNAL</span><span>小小奇迹 <b id="collected-count">0</b><span class="muted"> / 7</span></span></div><button id="journal-toggle" aria-label="打开探索手记"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></aside>
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
-      <button id="interaction" class="interaction" hidden><kbd>E</kbd><span id="interaction-label">探索</span></button>
-      <section class="location" aria-live="polite"><div class="location-rule"></div><p class="tiny-label" id="region-number">REGION 01 / THE MEADOW</p><h1 id="region-name">Clover Fields</h1><p class="location-cn" id="region-cn">三叶草原</p><p class="location-desc" id="region-description">风吹过草地，今天也不必着急。</p><span class="location-coordinates" id="coordinates">24° N &nbsp; 118° E</span></section>
-      <nav class="control-bar" aria-label="游戏操作提示"><span><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span>移动</span><i></i><span><kbd>Shift</kbd>奔跑</span><span><kbd>Space</kbd>跳跃</span><span><kbd>E</kbd>互动</span><i></i><span><kbd>V</kbd>切换视角</span><span class="mouse-hint">拖拽环视 · 滚轮缩放</span></nav>
-      <div class="view-controls"><button id="view-toggle" aria-label="切换视角" title="切换视角（M / V）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5Zm6-2v16m6-14v16"/></svg><span>近距离</span><kbd>V</kbd></button><button id="home-camera" class="icon-button" aria-label="镜头回到角色" title="镜头回到角色"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg></button></div>
-      <div class="compass" aria-hidden="true"><span>N</span><svg viewBox="0 0 40 40"><path d="m20 4 6 23-6-4-6 4Z" fill="#e0c0ff"/><path d="m20 36 6-9-6-4-6 4Z" fill="#6a3a8c"/></svg></div>
-      <div class="touch-controls"><div id="joystick" aria-label="拖动摇杆移动"><div id="joystick-stick"></div></div><div class="touch-actions"><button id="touch-interact" aria-label="互动">E</button><button id="touch-jump" aria-label="跳跃">↑</button></div></div>
-      <dialog id="help-dialog"><button class="dialog-close" aria-label="关闭操作说明">×</button><p class="tiny-label">CYBERPUNK ODYSSEY</p><h2>欢迎来到霓虹星球</h2><p class="dialog-intro">沿着数据小径，去看看工业绿洲与珊瑚礁。<br>这里没有倒计时，只有七处等待被发现的数字奇迹。</p><dl class="help-keys"><div><dt><kbd>W A S D</kbd> / <kbd>↑ ↓ ← →</kbd></dt><dd>自由移动</dd></div><div><dt><kbd>Shift</kbd> / <kbd>Space</kbd></dt><dd>奔跑 / 跳跃</dd></div><div><dt><kbd>E</kbd></dt><dd>与附近的地标互动</dd></div><div><dt>点击地面 / 拖动画面</dt><dd>走向目标 / 环视星球</dd></div><div><dt>滚轮 / <kbd>M</kbd></dt><dd>缩放 / 星球视角</dd></div></dl><p class="help-mobile">可以游泳跨海。J 打开手记导航，Home 回到草原，Esc 取消路线。触屏：左下摇杆移动，右下按钮跳跃与互动，拖动场景环视。</p><p class="help-mobile">手柄（已适配 PS5 DualSense）：左摇杆移动，右摇杆环视，<kbd>×</kbd> 跳跃，<kbd>□</kbd> 互动，<kbd>△</kbd> 换视角，<kbd>○</kbd> 取消/关闭弹窗，<kbd>L2</kbd> 奔跑，<kbd>R2</kbd>/<kbd>R1</kbd> 拉近，<kbd>L1</kbd> 拉远，触摸板镜头回正，并带震动反馈。</p><button class="primary-button" id="help-start">开始霓虹之旅 <span>↗</span></button></dialog>
-      <dialog id="journal-dialog"><button class="dialog-close" aria-label="关闭探索手记">×</button><p class="tiny-label">NEON DESTINATIONS</p><h2>霓虹世界的七个角落</h2><p class="dialog-intro" id="journal-intro">点击地点自动前往，靠近霓虹标记后按 E 互动。</p><ol id="journal-list"></ol><button class="subtle-button" id="reset-progress">重新启动这段旅程</button></dialog>
-      <div id="loading"><svg viewBox="0 0 30 34"><path d="M15 2 5 18h6L3 28h11v5h2v-5h11l-8-10h6L15 2Z" fill="currentColor"/></svg><p>赛博星球正在启动<span>…</span></p><small>CYBER LITTLE PLANET</small></div>
+    <main class="shell">
+      <div class="backdrop" aria-hidden="true"></div>
+      <div class="shade" aria-hidden="true"></div>
+      <div class="grain" aria-hidden="true"></div>
+
+      <aside class="menu" aria-label="主菜单">
+        <section class="brand">
+          <svg class="brand-mark" viewBox="0 0 90 64" aria-hidden="true">
+            <circle cx="38" cy="31" r="15"></circle>
+            <ellipse cx="38" cy="31" rx="31" ry="9" transform="rotate(-24 38 31)"></ellipse>
+            <ellipse cx="38" cy="31" rx="7" ry="21" transform="rotate(-16 38 31)"></ellipse>
+            <path d="M68 13l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z"></path>
+            <path d="M16 7l1.5 3.8L21 12l-3.5 1.2L16 17l-1.5-3.8L11 12l3.5-1.2L16 7Z"></path>
+          </svg>
+          <h1>口袋星球：漫游</h1>
+          <p class="subtitle">Little Planet</p>
+          <p class="kicker">A Pocket Adventure</p>
+        </section>
+
+        <nav class="actions" aria-label="菜单选项">
+          <a class="menu-button primary" href="./game.html?planet=cyber">
+            <svg viewBox="0 0 48 48" aria-hidden="true">
+              <circle cx="22" cy="24" r="11"></circle>
+              <ellipse cx="22" cy="24" rx="19" ry="6" transform="rotate(-26 22 24)"></ellipse>
+              <path d="M36 10l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6 1.6-4Z"></path>
+            </svg>
+            <span class="label">
+              <strong>开始探索</strong>
+              <span>Start Adventure</span>
+            </span>
+            <span class="arrow" aria-hidden="true">›</span>
+          </a>
+
+          <a class="menu-button" href="./controller-debug/index.html">
+            <svg viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M14 19h20a8 8 0 0 1 7.6 5.5l2 6.2a5.5 5.5 0 0 1-9.2 5.5l-4.2-4.2H17.8l-4.2 4.2a5.5 5.5 0 0 1-9.2-5.5l2-6.2A8 8 0 0 1 14 19Z"></path>
+              <path d="M15 27h8M19 23v8"></path>
+              <circle cx="32.5" cy="25.5" r="1.5"></circle>
+              <circle cx="37.5" cy="29.5" r="1.5"></circle>
+            </svg>
+            <span class="label">
+              <strong>手柄调试</strong>
+              <span>Controller Debug</span>
+            </span>
+            <span class="arrow" aria-hidden="true">›</span>
+          </a>
+
+          <a class="menu-button" href="./duo.html?planet=cyber">
+            <svg viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M12 14h24a4 4 0 0 1 4 4v17a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4Z"></path>
+              <path d="M24 14v25M15 24h6M18 21v6M32 23h.1M35 28h.1"></path>
+            </svg>
+            <span class="label">
+              <strong>双人协作</strong>
+              <span>Duo Play</span>
+            </span>
+            <span class="arrow" aria-hidden="true">›</span>
+          </a>
+
+          <a class="menu-button" href="./game.html">
+            <svg viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M9 12l10-4 10 4 10-4v28l-10 4-10-4-10 4V12Z"></path>
+              <path d="M19 8v28M29 12v28"></path>
+            </svg>
+            <span class="label">
+              <strong>原版星球</strong>
+              <span>Classic Planet</span>
+            </span>
+            <span class="arrow" aria-hidden="true">›</span>
+          </a>
+        </nav>
+
+        <p class="tagline">一起出发，去更大的世界。</p>
+      </aside>
+
+      <div class="status" aria-label="当前模式"><i aria-hidden="true"></i><span>双人协作探索 · 寻找 7 颗数字奇迹</span></div>
+      <p class="footer-note">Two players · One planet · Infinite possibilities</p>
     </main>
-    <!-- 1) lp-controller 的内置手柄轮询交给 ds5-adapter 独占，避免两套逻辑互相覆盖；
-           它自带的顶部状态条也关掉 —— ds5-adapter 左下角那条信息更全（含灯条/扳机状态）。 -->
+
     <script>
-      window.LPControllerConfig = { enableGamepad: false, hud: false };
+      const buttons = Array.from(document.querySelectorAll(".menu-button"));
+      let index = 0;
+
+      function focusButton(nextIndex) {
+        index = (nextIndex + buttons.length) % buttons.length;
+        buttons[index].focus();
+      }
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
+          event.preventDefault();
+          focusButton(index + 1);
+        }
+        if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
+          event.preventDefault();
+          focusButton(index - 1);
+        }
+      });
+
+      let previousPadState = { up: false, down: false, confirm: false };
+      function pollGamepad() {
+        const pad = navigator.getGamepads ? Array.from(navigator.getGamepads()).find(Boolean) : null;
+        if (pad) {
+          const up = pad.buttons[12]?.pressed || pad.axes[1] < -0.55;
+          const down = pad.buttons[13]?.pressed || pad.axes[1] > 0.55;
+          const confirm = pad.buttons[0]?.pressed || pad.buttons[1]?.pressed;
+
+          if (up && !previousPadState.up) focusButton(index - 1);
+          if (down && !previousPadState.down) focusButton(index + 1);
+          if (confirm && !previousPadState.confirm) buttons[index].click();
+
+          previousPadState = { up, down, confirm };
+        }
+        requestAnimationFrame(pollGamepad);
+      }
+      requestAnimationFrame(pollGamepad);
     </script>
-    <!-- 2) 通用输入桥接层（键盘合成 + 后端 WebSocket） -->
-    <script src="./bridge/lp-controller.js"></script>
-    <!-- 3) DS5 硬件输出层：灯条 / 自适应扳机 / 连续振动（WebHID，只写不读输入） -->
-    <script src="./bridge/dualsense.js"></script>
-    <script src="./bridge/lp-dualsense.js"></script>
-    <!-- 4) DS5 适配层：输入映射 + 事件振动 + HUD（必须最后加载） -->
-    <script src="./bridge/ds5-adapter.js"></script>
-    <!-- 5) 双人合作模式入口：右上角「👥 双人模式」按钮（分屏座位里不显示）。
-           必须在 day-night.js 之前加载：它建的容器同时收纳昼夜按钮。 -->
-    <script src="./bridge/duo-entry.js"></script>
-    <!-- 6) 昼夜切换：右上角浮动按钮（分屏座位里不显示，切时间由宿主页统一做） -->
-    <script src="./bridge/day-night.js"></script>
-    <!-- 7) 星球切换：原版星球 ↔ 赛博星球（GLB 高精度模型），整页换 ?planet 参数 -->
-    <script src="./bridge/planet-switch.js"></script>
-    <!-- 8) 建造工坊：收集奇迹攒积分 → Tripo 生成 3D 建筑 → 摆在星球表面。
-           需要场景钩子：赛博星球页自带；原版星球请用 ?build=1（进度不丢）。
-           分屏座位（?seat=N）里自动不挂载。 -->
-    <script src="./bridge/tripo-build.js"></script>
-    <!-- 9) 背景音乐：无缝无限循环（web/bgm/bgm-loop.ogg，由 make-bgm-loop.mjs 生成）。
-           浏览器不让带声音自动播放，所以等第一次点击/按键才起声；
-           右上角按钮或 M 键开关，状态存 localStorage。 -->
-    <script src="./bridge/bgm.js"></script>
   </body>
 </html>

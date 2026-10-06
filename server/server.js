@@ -93,6 +93,7 @@ function readBody(req, limit) {
 function serveStatic(req, res, pathname) {
   let rel = decodeURIComponent(pathname);
   if (rel === "/" || rel === "") rel = "/index.html";
+  if (rel.endsWith("/")) rel += "index.html";
 
   const target = path.join(ROOT, rel);
   /* 防目录穿越 */
